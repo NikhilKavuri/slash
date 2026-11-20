@@ -38,6 +38,14 @@ def detect_store_from_url(url: str) -> str:
         return "Purplle"
     elif "myntra" in domain:
         return "Myntra"
+    elif "ajio" in domain:
+        return "Ajio"
+    elif "newme" in domain:
+        return "NEWME"
+    elif "urbanic" in domain:
+        return "Urbanic"
+    elif "savana" in domain:
+        return "Savana"
     elif "flipkart" in domain:
         return "Flipkart"
     return "Online Store"
@@ -162,16 +170,38 @@ Return ONLY a valid JSON object matching this schema:
 
     # Rule-based fallback if no Gemini API Key or API error
     title = meta.get("title") if is_url else raw_text_or_url
-    words = title.split()
-    brand_guess = words[0] if words else "Generic"
+    
+    # Clean brand suffixes like " - NEWME", " | Nykaa", " - Myntra"
+    brand_guess = "Generic"
+    clean_title = title
+    if store and store != "Online Store":
+        brand_guess = store
+    
+    for sep in [" - ", " | ", " – ", " — "]:
+        if sep in clean_title:
+            parts = clean_title.split(sep)
+            if len(parts) >= 2:
+                # e.g. "White Polka Dot Tube Top - NEWME" -> brand="NEWME", clean_title="White Polka Dot Tube Top"
+                last_part = parts[-1].strip()
+                if last_part.upper() in ["NEWME", "NYKAA", "MYNTRA", "AJIO", "TIRA", "AMAZON", "URBANIC"]:
+                    brand_guess = last_part.upper()
+                    clean_title = " ".join(parts[:-1]).strip()
+
+    fashion_keywords = ["top", "dress", "jeans", "shirt", "skirt", "kurta", "pant", "hoodie", "tshirt", "t-shirt", "corset", "tube", "blazer", "trouser", "sweatshirt"]
+    is_fashion = any(kw in clean_title.lower() for kw in fashion_keywords) or store in ["NEWME", "Myntra", "Ajio", "Urbanic"]
+    category = "Fashion & Apparel" if is_fashion else "Beauty & Personal Care"
+
+    if brand_guess == "Generic":
+        words = clean_title.split()
+        brand_guess = words[0] if words else "Generic"
     
     return NormalizedProduct(
         brand=brand_guess,
-        product_name=title,
+        product_name=clean_title,
         variant=None,
-        category="Beauty & Skincare",
-        normalized_title=title,
-        search_query=f"{title} buy online India",
+        category=category,
+        normalized_title=f"{brand_guess} {clean_title}" if brand_guess.lower() not in clean_title.lower() else clean_title,
+        search_query=f"{brand_guess} {clean_title} buy online India",
         source_store=store,
         thumbnail_url=thumbnail,
         original_url=raw_text_or_url if is_url else None

@@ -1,0 +1,20 @@
+name: 1-Hour Catalog Price Refresh Cron
+
+on:
+  schedule:
+    # Run once every hour at minute 0
+    - cron: '0 * * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  refresh-catalog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Catalog Refresh on Slash Vercel Backend
+        run: |
+          echo "Pinging Slash backend catalog refresh endpoint..."
+          curl -f -X GET "https://slash-backend-seven.vercel.app/api/v1/cron/refresh-catalog" \
+            -H "User-Agent: Slash-GitHub-Cron/1.0" \
+            --retry 3 \
+            --retry-delay 5
+          echo "Refresh cycle complete."

@@ -45,6 +45,34 @@ STORE_PERKS = {
         "delivery_badge": "Standard 3 Days Delivery",
         "delivery_type": "standard",
         "logo_color": "#7B1FA2" # Purplle violet
+    },
+    "NEWME": {
+        "coupon_code": "NEWME15",
+        "coupon_desc": "Extra 15% OFF on First App Order",
+        "delivery_badge": "⚡ 2-Day Priority Shipping",
+        "delivery_type": "standard",
+        "logo_color": "#FF2A6D"
+    },
+    "Myntra": {
+        "coupon_code": "MYNTRA200",
+        "coupon_desc": "Flat ₹200 OFF on First Purchase",
+        "delivery_badge": "M-Express Next-Day Delivery",
+        "delivery_type": "standard",
+        "logo_color": "#FF3E6C"
+    },
+    "Ajio": {
+        "coupon_code": "TRENDS500",
+        "coupon_desc": "Up to 50% OFF + Extra ₹500 OFF",
+        "delivery_badge": "Ajio Express Delivery",
+        "delivery_type": "standard",
+        "logo_color": "#2C4152"
+    },
+    "Nykaa Fashion": {
+        "coupon_code": "FIRSTFASHION",
+        "coupon_desc": "10% OFF on ₹1500+",
+        "delivery_badge": "Express 2-Day Delivery",
+        "delivery_type": "standard",
+        "logo_color": "#FC2779"
     }
 }
 

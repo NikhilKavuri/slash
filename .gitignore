@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Next.js Build Output
+.next/
+out/
+build/
+dist/
+
+# Local SQLite databases & Environment Keys
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# OS & Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+.DS_Store
+Thumbs.db

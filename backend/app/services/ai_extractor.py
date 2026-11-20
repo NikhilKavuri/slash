@@ -303,9 +303,11 @@ If not found:
     is_fashion = any(kw in clean_title.lower() for kw in fashion_keywords) or store in ["NEWME", "Myntra", "Ajio", "Urbanic"]
     category = "Fashion & Apparel" if is_fashion else "Beauty & Personal Care"
 
-    if brand_guess == "Generic":
+    if brand_guess in ["Generic", "Amazon", "Online Store", "Flipkart"]:
         words = clean_title.split()
-        brand_guess = words[0] if words else "Generic"
+        if words:
+            brand_guess = words[0]
+            clean_title = " ".join(words[1:]) if len(words) > 1 else clean_title
     
     normalized_title = f"{brand_guess} {clean_title}" if brand_guess.lower() not in clean_title.lower() else clean_title
 

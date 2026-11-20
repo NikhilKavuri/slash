@@ -7,6 +7,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from app.services.ai_extractor import NormalizedProduct
 from app.services.affiliate_router import affiliate_router
+from app.services.gemini_search import search_exact_products_with_gemini
 
 logger = logging.getLogger(__name__)
 
@@ -179,21 +180,45 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
             }
         ]
 
+    # 1. Check Gemini Live Grounded Search if GEMINI_API_KEY is configured
+    gemini_data = await search_exact_products_with_gemini(product.brand, product.product_name)
+
     offers: List[StoreOffer] = []
     
     for s in store_profiles:
+        store_key = s["name"]
+        g_match = gemini_data.get(store_key) or gemini_data.get(store_key.lower())
+
+        # If Gemini verified that this exclusive brand is NOT sold on this store, skip it
+        if g_match and g_match.get("available") is False:
+            continue
+
         perks = affiliate_router.get_store_perks(s["name"])
         
         # Check if direct live scraped product
         if s["name"].upper() == "NEWME" and product.source_store == "NEWME":
             base_mrp = 999.0
             selling_price = 799.0
+            seller_label = "NEWME Official Brand Store (Exact SKU)"
+            authenticity = "Official Brand Exclusive"
+        elif g_match and g_match.get("price"):
+            selling_price = float(g_match["price"])
+            seller_label = g_match.get("title") or s["seller"]
+            authenticity = "Exact Matched SKU"
         else:
             discount_rate = random.uniform(*s["discount_range"])
             selling_price = round(base_mrp * (1.0 - discount_rate))
             selling_price = int(selling_price - (selling_price % 10) + 9)
             if selling_price >= base_mrp:
                 selling_price = int(base_mrp - 10)
+            
+            # Label seller as matched style if comparing a D2C private label across generic stores
+            if is_fashion and product.brand.upper() in ["NEWME", "URBANIC"] and s["name"] != product.source_store:
+                seller_label = f"Style Match: {clean_query}"
+                authenticity = "Similar Style Match"
+            else:
+                seller_label = s["seller"]
+                authenticity = s["authenticity"]
             
         discount_pct = int(round(((base_mrp - selling_price) / base_mrp) * 100))
         rating = round(random.uniform(*s["rating_range"]), 1)
@@ -222,13 +247,13 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
         total_savings = float(base_mrp - final_price)
         total_disc_pct = int(round((total_savings / base_mrp) * 100))
 
-        dest_url = s["url"]
+        dest_url = g_match.get("direct_url") if (g_match and g_match.get("direct_url")) else s["url"]
         affiliate_url = affiliate_router.wrap_affiliate_url(s["name"], dest_url)
 
         offer = StoreOffer(
             store_name=s["name"],
-            seller_name=s["seller"],
-            authenticity_badge=s["authenticity"],
+            seller_name=seller_label,
+            authenticity_badge=authenticity,
             price=float(selling_price),
             mrp=float(base_mrp),
             discount_percent=discount_pct,

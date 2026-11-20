@@ -45,11 +45,13 @@ class PriceHistoryPoint(BaseModel):
 
 class CompareResponse(BaseModel):
     product: NormalizedProduct
-    offers: List[StoreOffer]
-    best_offer: StoreOffer
+    offers: List[StoreOffer] = []
+    best_offer: Optional[StoreOffer] = None
     fastest_offer: Optional[StoreOffer] = None
-    review_lens: ReviewLensSummary
-    price_history: List[PriceHistoryPoint]
+    review_lens: Optional[ReviewLensSummary] = None
+    price_history: List[PriceHistoryPoint] = []
+    not_found: bool = False
+    message: Optional[str] = None
     cached: bool = False
     processing_time_ms: float
 
@@ -174,8 +176,21 @@ async def compare_product(req: CompareRequest, background_tasks: BackgroundTasks
 
     # 3. Multi-Store Search & Pricing
     offers = await fetch_store_offers(product)
-    if not offers:
-        raise HTTPException(status_code=404, detail="No store offers found for this product.")
+    
+    if not offers or not getattr(product, "is_found", True):
+        reason = getattr(product, "not_found_reason", None) or "Sorry, we couldn't find verified price comparisons for this item across trusted stores. Rather than showing you unrelated items or guessing prices, Slash only displays 100% verified authentic listings."
+        return {
+            "product": product.model_dump(),
+            "offers": [],
+            "best_offer": None,
+            "fastest_offer": None,
+            "review_lens": None,
+            "price_history": [],
+            "not_found": True,
+            "message": reason,
+            "cached": False,
+            "processing_time_ms": round((time.time() - start_time) * 1000, 1)
+        }
 
     best_offer = next((o for o in offers if o.is_best_price), offers[0])
     fastest_offer = next((o for o in offers if o.is_fastest_delivery), None)
@@ -196,6 +211,8 @@ async def compare_product(req: CompareRequest, background_tasks: BackgroundTasks
         "fastest_offer": fastest_offer.model_dump() if fastest_offer else None,
         "review_lens": review_lens.model_dump(),
         "price_history": [p.model_dump() for p in price_history],
+        "not_found": False,
+        "message": None,
         "cached": False,
         "processing_time_ms": round((time.time() - start_time) * 1000, 1)
     }

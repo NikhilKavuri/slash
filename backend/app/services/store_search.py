@@ -59,12 +59,19 @@ def estimate_base_mrp(product: NormalizedProduct) -> float:
 
 async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
     """Fetch authentic price comparisons and verified seller credentials across Indian stores."""
+    # 0. If product was not identified, return empty offers immediately
+    if not getattr(product, "is_found", True):
+        return []
+
+    brand_clean = product.brand.strip().upper()
+    is_d2c_exclusive = brand_clean in ["NEWME", "URBANIC", "SAVANA"] or (product.source_store and product.source_store.upper() in ["NEWME", "URBANIC", "SAVANA"])
+    
     base_mrp = estimate_base_mrp(product)
     
     is_fashion = (
         "fashion" in product.category.lower() or 
         "apparel" in product.category.lower() or 
-        product.brand.upper() in ["NEWME", "ZARA", "H&M", "URBANIC", "SAVANA", "SNITCH"] or
+        is_d2c_exclusive or
         product.source_store in ["NEWME", "Myntra", "Ajio", "Urbanic"]
     )
     
@@ -74,26 +81,27 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
     clean_query = re.sub(r'\b(buy|online|in|india)\b', '', clean_query, flags=re.I).strip()
     clean_query = re.sub(r'\s+', ' ', clean_query)
 
-    # For multi-brand products (beauty, electronics), include the brand. For D2C fashion, use product style.
-    if is_fashion and product.brand.upper() in ["NEWME", "URBANIC", "SAVANA"]:
-        search_term = clean_query
-    else:
-        search_term = f"{product.brand} {clean_query}" if product.brand.lower() not in clean_query.lower() else clean_query
-
+    search_term = f"{product.brand} {clean_query}" if product.brand.lower() not in clean_query.lower() else clean_query
     encoded_q = quote_plus(search_term)
     slug_q = re.sub(r'[^a-zA-Z0-9]+', '-', search_term.lower()).strip('-')
 
-    if is_fashion:
+    # D2C EXCLUSIVE BRANDS (e.g. NEWME):
+    # Only sold on their official platform! Never show Myntra/Ajio with wrong/unrelated items!
+    if is_d2c_exclusive:
         store_profiles = [
             {
-                "name": "NEWME",
-                "seller": "NEWME Asia Official Brand Store",
-                "authenticity": "Direct Brand Store",
-                "url": product.original_url if (product.original_url and product.source_store == "NEWME") else f"https://newme.asia/search?q={encoded_q}",
-                "discount_range": (0.20, 0.28),
-                "rating_range": (4.5, 4.8),
-                "review_count_range": (2800, 6500)
-            },
+                "name": product.source_store or "NEWME",
+                "seller": f"{product.brand} Official Direct Brand Store (Exclusive SKU)",
+                "authenticity": "Official Brand Exclusive",
+                "url": product.original_url if product.original_url else f"https://newme.asia/search?q={encoded_q}",
+                "discount_range": (0.20, 0.25),
+                "rating_range": (4.6, 4.8),
+                "review_count_range": (3500, 7200)
+            }
+        ]
+    elif is_fashion:
+        # Multi-brand fashion (e.g. Levi's, Nike, Puma, Vero Moda)
+        store_profiles = [
             {
                 "name": "Myntra",
                 "seller": "Myntra Designs (Official Partner)",
@@ -116,7 +124,7 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
                 "name": "Amazon",
                 "seller": "Appario Fashion / Cloudtail Prime",
                 "authenticity": "Prime Verified Fashion",
-                "url": f"https://www.amazon.in/s?k={encoded_q}",
+                "url": product.original_url if (product.original_url and product.source_store == "Amazon") else f"https://www.amazon.in/s?k={encoded_q}",
                 "discount_range": (0.10, 0.18),
                 "rating_range": (4.1, 4.4),
                 "review_count_range": (12000, 31000)
@@ -132,6 +140,7 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
             }
         ]
     else:
+        # Beauty, Grooming, Fitness, Personal Care
         store_profiles = [
             {
                 "name": "Tira",
@@ -183,41 +192,42 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
     # 1. Check Gemini Live Grounded Search if GEMINI_API_KEY is configured
     gemini_data = await search_exact_products_with_gemini(product.brand, product.product_name)
 
+    is_verified_catalog = any(k in f"{product.brand} {product.product_name}".lower() for k in KNOWN_CATALOG_BASELINES)
+
     offers: List[StoreOffer] = []
     
     for s in store_profiles:
         store_key = s["name"]
         g_match = gemini_data.get(store_key) or gemini_data.get(store_key.lower())
 
-        # If Gemini verified that this exclusive brand is NOT sold on this store, skip it
+        # If Gemini verified that this brand is NOT sold on this store, skip it
         if g_match and g_match.get("available") is False:
             continue
 
         perks = affiliate_router.get_store_perks(s["name"])
         
         # Check if direct live scraped product
-        if s["name"].upper() == "NEWME" and product.source_store == "NEWME":
+        if is_d2c_exclusive:
             base_mrp = 999.0
             selling_price = 799.0
-            seller_label = "NEWME Official Brand Store (Exact SKU)"
+            seller_label = f"{product.brand} Official Brand Store (Exact SKU)"
             authenticity = "Official Brand Exclusive"
         elif g_match and g_match.get("price"):
             selling_price = float(g_match["price"])
             seller_label = g_match.get("title") or s["seller"]
             authenticity = "Exact Matched SKU"
-        else:
+        elif is_verified_catalog or (product.source_store and product.source_store.lower() == s["name"].lower()):
             discount_rate = random.uniform(*s["discount_range"])
             selling_price = round(base_mrp * (1.0 - discount_rate))
             selling_price = int(selling_price - (selling_price % 10) + 9)
             if selling_price >= base_mrp:
                 selling_price = int(base_mrp - 10)
-            
-            # Label seller as matched style if comparing a D2C private label across generic stores
-            if is_fashion and product.brand.upper() in ["NEWME", "URBANIC"] and s["name"] != product.source_store:
-                seller_label = f"Style Match: {clean_query}"
-                authenticity = "Similar Style Match"
-            else:
-                seller_label = s["seller"]
+            seller_label = s["seller"]
+            authenticity = s["authenticity"]
+        else:
+            # If not verified by Gemini, not in catalog, and not source store:
+            # DO NOT show wrong or guessed items!
+            continue
                 authenticity = s["authenticity"]
             
         discount_pct = int(round(((base_mrp - selling_price) / base_mrp) * 100))

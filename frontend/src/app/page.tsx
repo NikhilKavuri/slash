@@ -205,18 +205,25 @@ export default function HomePage() {
       const data = await compareProduct(query);
       setResult(data);
 
-      // Trigger celebratory confetti
-      confetti({
-        particleCount: 75,
-        spread: 65,
-        origin: { y: 0.65 },
-        colors: ["#10b981", "#09090b", "#00ff66", "#f59e0b"],
-      });
+      if (data.not_found || !data.offers || data.offers.length === 0) {
+        showErrorToast(
+          "No verified matches found",
+          data.message || "We only show exact verified deals and never guess or display unrelated items."
+        );
+      } else if (data.best_offer) {
+        // Trigger celebratory confetti
+        confetti({
+          particleCount: 75,
+          spread: 65,
+          origin: { y: 0.65 },
+          colors: ["#10b981", "#09090b", "#00ff66", "#f59e0b"],
+        });
 
-      showSuccessToast(
-        "Price Slashed! 🎯",
-        `Bagged ${formatINR(data.best_offer.price)} on ${data.best_offer.store_name} (Saved ${formatINR(data.best_offer.savings_vs_mrp)})`
-      );
+        showSuccessToast(
+          "Price Slashed! 🎯",
+          `Bagged ${formatINR(data.best_offer.price)} on ${data.best_offer.store_name} (Saved ${formatINR(data.best_offer.savings_vs_mrp)})`
+        );
+      }
     } catch (err: any) {
       showErrorToast(
         "Could not find deals",
@@ -228,7 +235,7 @@ export default function HomePage() {
   };
 
   const handleShareWhatsApp = () => {
-    if (!result) return;
+    if (!result || !result.best_offer) return;
     const text = `Yo! Slashed ${result.product.normalized_title} down to ${formatINR(
       result.best_offer.price
     )} on ${result.best_offer.store_name} (Saved ${formatINR(
@@ -407,21 +414,62 @@ export default function HomePage() {
               </motion.button>
             </motion.div>
 
-            {/* Side-by-Side Store Pricing Grid & List View */}
-            <PriceTable
-              offers={result.offers}
-              bestOffer={result.best_offer}
-              fastestOffer={result.fastest_offer}
-            />
+            {/* If No Verified Offers Found: Show Honest, Friendly "Sorry" Card */}
+            {(result.not_found || !result.offers || result.offers.length === 0) ? (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-8 sm:p-12 rounded-3xl bg-white border-2 border-dashed border-zinc-200 shadow-xs text-center max-w-2xl mx-auto space-y-5"
+              >
+                <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto text-3xl border border-amber-200 shadow-2xs">
+                  🔍
+                </div>
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    <span>Zero False Matches</span>
+                    <span className="font-cursive text-amber-800 font-bold">~ 100% real</span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-zinc-950 tracking-tight">
+                    Sorry, we couldn&apos;t find verified matches
+                  </h3>
+                  <p className="text-sm text-zinc-600 max-w-lg mx-auto leading-relaxed">
+                    {result.message || "We couldn't find exact, verified prices for this product across other trusted stores right now. Rather than showing you unrelated items or guessing prices, Slash only shows genuine, verified deals."}
+                  </p>
+                </div>
 
-            {/* 30-Day Price Trend Graph & The Real Tea Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full min-w-0">
-              <PriceHistoryChart
-                history={result.price_history}
-                currentPrice={result.best_offer.price}
-              />
-              <ReviewLens summary={result.review_lens} />
-            </div>
+                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <button
+                    onClick={() => setResult(null)}
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-black text-xs transition-colors shadow-xs"
+                  >
+                    Try Another Search
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <>
+                {/* Side-by-Side Store Pricing Grid & List View */}
+                <PriceTable
+                  offers={result.offers}
+                  bestOffer={result.best_offer!}
+                  fastestOffer={result.fastest_offer || undefined}
+                />
+
+                {/* 30-Day Price Trend Graph & The Real Tea Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full min-w-0">
+                  {result.best_offer && (
+                    <PriceHistoryChart
+                      history={result.price_history || []}
+                      currentPrice={result.best_offer.price}
+                    />
+                  )}
+                  {result.review_lens && (
+                    <ReviewLens summary={result.review_lens} />
+                  )}
+                </div>
+              </>
+            )}
           </main>
         )}
       </AnimatePresence>

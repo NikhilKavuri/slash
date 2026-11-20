@@ -16,11 +16,17 @@ async def search_exact_products_with_gemini(brand: str, product_title: str) -> D
         return {}
 
     try:
+        from google.generativeai import protos
         genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
-            tools="google_search"
-        )
+        try:
+            search_tool = protos.Tool(google_search=protos.Tool.GoogleSearch())
+            model = genai.GenerativeModel(
+                model_name="gemini-2.0-flash",
+                tools=[search_tool]
+            )
+        except Exception as tool_init_err:
+            logger.warning(f"protos.Tool GoogleSearch init failed: {tool_init_err}. Using standard gemini-2.0-flash.")
+            model = genai.GenerativeModel(model_name="gemini-2.0-flash")
 
         prompt = f"""
 Find the EXACT direct product page URL and current listed price for "{brand} {product_title}" on these Indian stores:

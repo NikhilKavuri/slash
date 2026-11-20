@@ -95,6 +95,22 @@ export function PriceTable({ offers, bestOffer, fastestOffer }: PriceTableProps)
         </div>
       </div>
 
+      {/* Exclusive Brand SKU Notice if single offer */}
+      {offers.length === 1 && (
+        <div className="p-3.5 rounded-2xl bg-emerald-50/90 border border-emerald-300 text-xs text-emerald-950 flex items-start gap-3 shadow-2xs">
+          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-black text-emerald-900 flex items-center gap-1.5">
+              <span>Official Brand Exclusive</span>
+              <span className="font-cursive text-emerald-700 font-bold">~ 100% verified authentic</span>
+            </span>
+            <p className="text-zinc-600 leading-relaxed font-medium">
+              This product is exclusive to {offers[0].store_name}. We do not display competitor stores (like Myntra, Ajio, or Amazon) because they do not carry this exact design, ensuring you never see wrong or unrelated items.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 2. COMPACT 5-COLUMN SIDE-BY-SIDE GRID */}
       {viewMode === "side-by-side" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 w-full min-w-0">

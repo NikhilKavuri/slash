@@ -66,10 +66,12 @@ export interface PriceHistoryPoint {
 export interface CompareResult {
   product: NormalizedProduct;
   offers: StoreOffer[];
-  best_offer: StoreOffer;
-  fastest_offer?: StoreOffer;
-  review_lens: ReviewLensSummary;
-  price_history: PriceHistoryPoint[];
+  best_offer?: StoreOffer | null;
+  fastest_offer?: StoreOffer | null;
+  review_lens?: ReviewLensSummary | null;
+  price_history?: PriceHistoryPoint[];
+  not_found?: boolean;
+  message?: string;
   cached: boolean;
   processing_time_ms: number;
 }

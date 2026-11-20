@@ -267,21 +267,22 @@ If not found:
     # Rule-based fallback if no Gemini API Key or API error
     title = meta.get("title") if is_url else raw_text_or_url
     
-    # If title is empty or just the raw ASIN and store is Amazon, we couldn't resolve it
-    if asin and (not title or title == asin):
-        return NormalizedProduct(
-            brand="Unknown",
-            product_name="Product Not Found",
-            variant=None,
-            category="General",
-            normalized_title="Product Not Found",
-            search_query=raw_text_or_url,
-            source_store=store,
-            thumbnail_url=thumbnail,
-            original_url=raw_text_or_url if is_url else None,
-            is_found=False,
-            not_found_reason=f"Sorry, we couldn't resolve the product details for Amazon ASIN {asin}. Please try searching with the product name directly."
-        )
+    # If title is empty, or contains the ASIN, or store is Amazon and title is generic/unrecognized
+    if asin or store == "Amazon":
+        if not title or (asin and asin in title) or title.lower() in ["amazon", "amazon.in", "product", "item"]:
+            return NormalizedProduct(
+                brand="Unknown",
+                product_name="Product Not Found",
+                variant=None,
+                category="General",
+                normalized_title="Product Not Found",
+                search_query=raw_text_or_url,
+                source_store=store,
+                thumbnail_url=thumbnail,
+                original_url=raw_text_or_url if is_url else None,
+                is_found=False,
+                not_found_reason=f"Sorry, we couldn't resolve the product details for this Amazon link. Please try searching with the product name directly."
+            )
 
     # Clean brand suffixes like " - NEWME", " | Nykaa", " - Myntra"
     brand_guess = "Generic"

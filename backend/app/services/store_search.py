@@ -228,7 +228,6 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
             # If not verified by Gemini, not in catalog, and not source store:
             # DO NOT show wrong or guessed items!
             continue
-                authenticity = s["authenticity"]
             
         discount_pct = int(round(((base_mrp - selling_price) / base_mrp) * 100))
         rating = round(random.uniform(*s["rating_range"]), 1)

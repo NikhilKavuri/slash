@@ -59,6 +59,9 @@ def generate_mock_price_history(best_price: float, mrp: float) -> List[PriceHist
         ))
     return points
 
+@app.get("/")
+@app.get("/health")
+@app.get("/v1/health")
 @app.get("/api/v1/health")
 async def health_check():
     return {
@@ -68,6 +71,8 @@ async def health_check():
         "timestamp": time.time()
     }
 
+@app.post("/compare", response_model=CompareResponse)
+@app.post("/v1/compare", response_model=CompareResponse)
 @app.post("/api/v1/compare", response_model=CompareResponse)
 async def compare_product(req: CompareRequest):
     start_time = time.time()
@@ -116,6 +121,8 @@ async def compare_product(req: CompareRequest):
 
     return result
 
+@app.get("/trending")
+@app.get("/v1/trending")
 @app.get("/api/v1/trending")
 async def get_trending_products():
     """Return viral products for 1-click test comparison on the home screen."""

@@ -176,3 +176,14 @@ async def get_trending_products():
             "image": "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500&auto=format&fit=crop&q=60"
         }
     ]
+
+from fastapi import Request
+
+@app.get("/{catch_all:path}")
+async def debug_catch_all(catch_all: str, request: Request):
+    return {
+        "catch_all": catch_all,
+        "url_path": request.url.path,
+        "scope_path": request.scope.get("path"),
+        "headers": dict(request.headers),
+    }

@@ -101,7 +101,7 @@ class AffiliateRouter:
         # 3. Fallback tracking parameters
         parsed = urlparse(original_url)
         query_params = parse_qs(parsed.query)
-        query_params["utm_source"] = ["pricelens"]
+        query_params["utm_source"] = ["slash"]
         query_params["utm_medium"] = ["price_comparison"]
         new_query = urlencode(query_params, doseq=True)
         return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))

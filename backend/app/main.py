@@ -343,7 +343,7 @@ async def get_trending_products():
             "savings": 140,
             "discount_percent": 20,
             "sample_query": "The Ordinary Niacinamide 10% Zinc 1% 30ml",
-            "image": "https://images.unsplash.com/photo-1608248597359-2e0618063d80?w=500&auto=format&fit=crop&q=60"
+            "image": "https://images.unsplash.com/photo-1601049541289-9b1b7bbbfe19?w=500&auto=format&fit=crop&q=60"
         },
         {
             "title": "Cetaphil Gentle Skin Cleanser (125ml)",

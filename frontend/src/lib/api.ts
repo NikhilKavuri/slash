@@ -26,6 +26,9 @@ export interface StoreOffer {
   delivery_type: "instant" | "standard";
   coupon_code?: string;
   coupon_desc?: string;
+  coupon_discount?: number;
+  final_price?: number;
+  total_discount_percent?: number;
   is_best_price: boolean;
   is_fastest_delivery: boolean;
   savings_vs_mrp: number;

@@ -195,13 +195,15 @@ Return ONLY a valid JSON object matching this schema:
         words = clean_title.split()
         brand_guess = words[0] if words else "Generic"
     
+    normalized_title = f"{brand_guess} {clean_title}" if brand_guess.lower() not in clean_title.lower() else clean_title
+
     return NormalizedProduct(
         brand=brand_guess,
         product_name=clean_title,
         variant=None,
         category=category,
-        normalized_title=f"{brand_guess} {clean_title}" if brand_guess.lower() not in clean_title.lower() else clean_title,
-        search_query=f"{brand_guess} {clean_title} buy online India",
+        normalized_title=normalized_title,
+        search_query=normalized_title,
         source_store=store,
         thumbnail_url=thumbnail,
         original_url=raw_text_or_url if is_url else None

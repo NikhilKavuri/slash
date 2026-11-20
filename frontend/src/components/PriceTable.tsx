@@ -151,20 +151,34 @@ export function PriceTable({ offers, bestOffer, fastestOffer }: PriceTableProps)
                     ) : null}
                   </div>
 
-                  {/* Price */}
-                  <div className="pt-2 border-t border-zinc-100">
-                    <div className="flex items-baseline gap-1.5">
+                  {/* Price Breakdown with Final Checkout Steal */}
+                  <div className="pt-2 border-t border-zinc-100 space-y-1">
+                    <div className="flex items-baseline gap-1.5 flex-wrap">
                       <span className="text-2xl font-black text-zinc-950 tracking-tight">
-                        {formatINR(offer.price)}
+                        {formatINR(offer.final_price || offer.price)}
                       </span>
-                      <span className="text-xs text-zinc-400 line-through font-normal">
-                        {formatINR(offer.mrp)}
-                      </span>
+                      {offer.coupon_discount && offer.coupon_discount > 0 ? (
+                        <span className="text-xs text-zinc-400 line-through font-normal">
+                          {formatINR(offer.price)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-zinc-400 line-through font-normal">
+                          {formatINR(offer.mrp)}
+                        </span>
+                      )}
                     </div>
-                    <div className="text-[11px] font-black text-emerald-700 mt-0.5 flex items-center gap-1">
-                      <span>Save {formatINR(offer.savings_vs_mrp)}</span>
+
+                    {offer.coupon_discount && offer.coupon_discount > 0 ? (
+                      <div className="text-[10px] font-black text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                        <Tag className="w-2.5 h-2.5 text-emerald-700" />
+                        <span>Code saves {formatINR(offer.coupon_discount)} extra</span>
+                      </div>
+                    ) : null}
+
+                    <div className="text-[11px] font-black text-emerald-700 flex items-center gap-1 flex-wrap">
+                      <span>Total Save {formatINR(offer.savings_vs_mrp)}</span>
                       <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1 rounded font-bold">
-                        -{offer.discount_percent}%
+                        -{offer.total_discount_percent || offer.discount_percent}% Total
                       </span>
                     </div>
                   </div>
@@ -314,11 +328,16 @@ export function PriceTable({ offers, bestOffer, fastestOffer }: PriceTableProps)
                 <div className="flex items-center justify-between sm:justify-end gap-3.5 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-100 shrink-0">
                   <div className="text-left sm:text-right">
                     <div className="text-xl font-black text-zinc-950 tracking-tight">
-                      {formatINR(offer.price)}
+                      {formatINR(offer.final_price || offer.price)}
                     </div>
                     <div className="text-[11px] text-zinc-400 line-through">
                       MRP {formatINR(offer.mrp)}
                     </div>
+                    {offer.coupon_discount && offer.coupon_discount > 0 ? (
+                      <div className="text-[10px] font-bold text-emerald-700">
+                        Code saved {formatINR(offer.coupon_discount)}
+                      </div>
+                    ) : null}
                   </div>
 
                   <a

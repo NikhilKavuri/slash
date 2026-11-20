@@ -173,7 +173,7 @@ const UNISEX_TRENDING_ITEMS = [
     best_store: "Nykaa",
     savings: 140,
     sample_query: "The Ordinary Niacinamide 10% Zinc 1% 30ml",
-    image: "https://images.unsplash.com/photo-1608248597359-2e0618063d80?w=500&auto=format&fit=crop&q=60",
+    image: "https://images.unsplash.com/photo-1601049541289-9b1b7bbbfe19?w=500&auto=format&fit=crop&q=60",
   },
   {
     title: "Cetaphil Gentle Skin Cleanser (125ml)",
@@ -488,6 +488,13 @@ export default function HomePage() {
                           src={item.image}
                           alt={item.title}
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const target = e.currentTarget;
+                            if (!target.dataset.fallback) {
+                              target.dataset.fallback = "true";
+                              target.src = "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500&auto=format&fit=crop&q=60";
+                            }
+                          }}
                         />
                         <div className="absolute bottom-0 inset-x-0 bg-emerald-600 text-white text-[9px] font-black text-center py-0.5">
                           -₹{item.savings} W
@@ -550,6 +557,13 @@ export default function HomePage() {
                         src={item.image}
                         alt={item.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          const target = e.currentTarget;
+                          if (!target.dataset.fallback) {
+                            target.dataset.fallback = "true";
+                            target.src = "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500&auto=format&fit=crop&q=60";
+                          }
+                        }}
                       />
                       <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-zinc-950 text-white shadow-md flex items-center gap-1">
                         <span className="text-emerald-400 font-bold">Save ₹{item.savings}</span>

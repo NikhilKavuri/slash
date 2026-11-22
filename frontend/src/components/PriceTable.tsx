@@ -17,6 +17,7 @@ import {
   Star,
   Sparkles,
   Flame,
+  AlertTriangle,
 } from "lucide-react";
 import { BorderBeam } from "./magicui/border-beam";
 import { motion } from "framer-motion";
@@ -200,6 +201,12 @@ export function PriceTable({ offers, bestOffer, fastestOffer }: PriceTableProps)
                   </div>
 
                   {/* SELLER VERIFICATION */}
+                  {offer.is_scam_flagged && (
+                    <div className="p-2 rounded-xl bg-amber-50 border border-amber-300 text-[10px] text-amber-900 flex items-start gap-1.5 font-bold">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                      <span>{offer.scam_warning || "Buyer Caution: Flagged in reviews for potential counterfeit or tampered packaging."}</span>
+                    </div>
+                  )}
                   <div className="px-2.5 py-1.5 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-0.5 min-w-0">
                     <div className="flex items-center gap-1 text-[10px] font-black text-emerald-700 min-w-0">
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
@@ -307,6 +314,12 @@ export function PriceTable({ offers, bestOffer, fastestOffer }: PriceTableProps)
                     </div>
 
                     {/* Authenticity Badge + Seller (Safe truncation on mobile) */}
+                    {offer.is_scam_flagged && (
+                      <div className="p-1.5 rounded-lg bg-amber-50 border border-amber-300 text-[10px] text-amber-900 flex items-center gap-1 font-bold">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>Buyer Caution: High duplicate / scam reports in recent reviews</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1.5 text-[11px] text-zinc-600 min-w-0 flex-wrap">
                       <span className="inline-flex items-center gap-1 font-bold text-emerald-700 shrink-0">
                         <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />

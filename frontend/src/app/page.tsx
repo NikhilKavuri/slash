@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { compareProduct, CompareResult } from "@/lib/api";
+import { useState, useEffect } from "react";
+import { compareProduct, CompareResult, getTrendingProducts, TrendingItem } from "@/lib/api";
 import { formatINR } from "@/lib/utils";
 import { SearchBar } from "@/components/SearchBar";
 import { PriceTable } from "@/components/PriceTable";
@@ -9,6 +9,7 @@ import { ReviewLens } from "@/components/ReviewLens";
 import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { SlashLogo } from "@/components/SlashLogo";
 import { ScannerLoader } from "@/components/ScannerLoader";
+import { ImageWithFallback } from "@/components/ImageWithFallback";
 import { Marquee } from "@/components/magicui/marquee";
 import { AnimatedList } from "@/components/magicui/animated-list";
 import { useSnackbar } from "@/components/Snackbar";
@@ -31,10 +32,17 @@ import {
 const LIVE_SLASH_NOTIFICATIONS = [
   {
     name: "NEWME Polka Dot Tube Top",
-    description: "Slashed from ₹999 to ₹789 on Myntra (Saved ₹210! 🎀)",
+    description: "Slashed from ₹999 to ₹799 on NEWME Direct (Saved ₹200! 🎀)",
     time: "Just now",
     icon: "🎀",
     color: "#EC4899",
+  },
+  {
+    name: "GOBOULT Mustang Smart Watch",
+    description: "Slashed from ₹4,999 to ₹1,499 on Amazon (Saved ₹3,500 ⚡)",
+    time: "1m ago",
+    icon: "⚡",
+    color: "#F59E0B",
   },
   {
     name: "MuscleBlaze Biozyme Whey 1kg",
@@ -44,148 +52,125 @@ const LIVE_SLASH_NOTIFICATIONS = [
     color: "#10B981",
   },
   {
-    name: "Urbanic Cargo Trousers",
-    description: "Slashed from ₹1,990 to ₹1,190 on Myntra (40% Cut 👖)",
-    time: "4m ago",
-    icon: "👖",
-    color: "#8B5CF6",
-  },
-  {
     name: "Minimalist Niacinamide 10%",
-    description: "Slashed to ₹509 on Tira (Secret code TIRA20 applied 🔥)",
-    time: "6m ago",
+    description: "Slashed to ₹489 on Tira (Secret code TIRA20 applied 🔥)",
+    time: "5m ago",
     icon: "🧴",
     color: "#3B82F6",
   },
   {
-    name: "Philips Series 3000 Trimmer",
+    name: "Philips Series 1000 Trimmer",
     description: "Slashed from ₹1,195 to ₹799 on Amazon (Clean cut ✂️)",
-    time: "9m ago",
+    time: "8m ago",
     icon: "⚡",
     color: "#F59E0B",
   },
 ];
 
-const UNISEX_TRENDING_ITEMS = [
+const UNISEX_TRENDING_ITEMS: TrendingItem[] = [
   {
     title: "NEWME White Polka Dot Tube Top",
     brand: "NEWME",
     category: "Fashion & Apparel",
-    cultureTag: "VIRAL AESTHETIC 🎀",
-    best_price: 789,
+    culture_tag: "VIRAL AESTHETIC 🎀",
+    best_price: 799,
     mrp: 999,
-    best_store: "Myntra",
-    savings: 210,
+    best_store: "NEWME",
+    fastest_store: "NEWME Direct",
+    savings: 200,
     sample_query: "https://newme.asia/product/white-polka-dot-tube-top-4",
     image: "https://assets.newme.asia/wp-content/uploads/2026/07/17121641c5cf1266/NM-PRC-445-BLS-26-JUL-35660-WHITE(1).webp",
   },
   {
-    title: "MuscleBlaze Biozyme Performance Whey (1kg)",
-    brand: "MuscleBlaze",
-    category: "Fitness & Nutrition",
-    cultureTag: "GYM RAT GRAIL 🏋️",
-    best_price: 1899,
-    mrp: 2499,
+    title: "GOBOULT Mustang Muscle Smart Watch (2.01\" Curved HD Display)",
+    brand: "Boult",
+    category: "Electronics & Wearables",
+    culture_tag: "TECH GRAIL ⚡",
+    best_price: 1499,
+    mrp: 4999,
     best_store: "Amazon",
-    savings: 600,
-    sample_query: "MuscleBlaze Biozyme Performance Whey Protein 1kg",
-    image: "https://images.unsplash.com/photo-1579722821273-0f6c7d44362f?w=500&auto=format&fit=crop&q=60",
+    fastest_store: "Amazon Prime",
+    savings: 3500,
+    sample_query: "https://www.amazon.in/dp/B0GYYM57FP",
+    image: "https://m.media-amazon.com/images/I/61SSVxTSs3L._SL1500_.jpg",
   },
   {
-    title: "Urbanic High-Waist Wide Leg Cargo Trousers",
-    brand: "Urbanic",
-    category: "Fashion & Apparel",
-    cultureTag: "Y2K DRIP 👖",
-    best_price: 1190,
-    mrp: 1990,
-    best_store: "Myntra",
-    savings: 800,
-    sample_query: "Urbanic High-Waist Wide Leg Cargo Trousers",
-    image: "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?w=500&auto=format&fit=crop&q=60",
+    title: "Minimalist 10% Niacinamide Face Serum with Zinc (30ml)",
+    brand: "Minimalist",
+    category: "Skincare",
+    culture_tag: "SKINCARE SAVIOR 🧴",
+    best_price: 489,
+    mrp: 599,
+    best_store: "Tira",
+    fastest_store: "Zepto (10 mins)",
+    savings: 110,
+    sample_query: "Minimalist Niacinamide 10% Face Serum 30ml",
+    image: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?auto=format&fit=crop&w=500&q=80",
   },
   {
-    title: "Philips Series 3000 Cordless Beard Trimmer",
+    title: "Philips Series 1000 Cordless Beard Trimmer (BT1232/15)",
     brand: "Philips",
     category: "Grooming",
-    cultureTag: "CLEAN FADE ⚡",
+    culture_tag: "CLEAN FADE ⚡",
     best_price: 799,
     mrp: 1195,
     best_store: "Amazon",
+    fastest_store: "Flipkart Assured",
     savings: 396,
-    sample_query: "Philips Series 3000 Cordless Beard Trimmer BT3211",
-    image: "https://images.unsplash.com/photo-1621607512214-68297480165e?w=500&auto=format&fit=crop&q=60",
+    sample_query: "Philips BT1232 15 Cordless Beard Trimmer",
+    image: "https://images.unsplash.com/photo-1621607512214-68297480165e?auto=format&fit=crop&w=500&q=80",
   },
   {
-    title: "Minimalist Niacinamide 10% Face Serum (30ml)",
-    brand: "Minimalist",
-    category: "Skincare",
-    cultureTag: "SKINCARE SAVIOR 🧴",
-    best_price: 509,
-    mrp: 599,
-    best_store: "Tira",
-    savings: 90,
-    sample_query: "Minimalist Niacinamide 10% Face Serum 30ml",
-    image: "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=500&auto=format&fit=crop&q=60",
+    title: "MuscleBlaze Biozyme Performance Whey (1kg Rich Chocolate)",
+    brand: "MuscleBlaze",
+    category: "Fitness & Nutrition",
+    culture_tag: "GYM RAT GRAIL 🏋️",
+    best_price: 1899,
+    mrp: 2499,
+    best_store: "Amazon",
+    fastest_store: "Blinkit (12 mins)",
+    savings: 600,
+    sample_query: "MuscleBlaze Biozyme Performance Whey Protein 1kg",
+    image: "https://images.unsplash.com/photo-1579722821273-0f6c7d44362f?auto=format&fit=crop&w=500&q=80",
   },
   {
-    title: "Laneige Lip Sleeping Mask Berry (20g)",
-    brand: "Laneige",
-    category: "Personal Care",
-    cultureTag: "VIRAL ON REELS ✨",
-    best_price: 489,
-    mrp: 600,
-    best_store: "Tira",
-    savings: 111,
-    sample_query: "Laneige Lip Sleeping Mask Berry 20g",
-    image: "https://images.unsplash.com/photo-1599305090598-fe179d501227?w=500&auto=format&fit=crop&q=60",
-  },
-  {
-    title: "Maybelline Lash Sensational Sky High Mascara",
+    title: "Maybelline New York Lash Sensational Sky High Mascara",
     brand: "Maybelline",
     category: "Makeup",
-    cultureTag: "BADDIE VIBES 💅",
+    culture_tag: "BADDIE VIBES 💅",
     best_price: 629,
     mrp: 799,
     best_store: "Amazon",
+    fastest_store: "Tira Express",
     savings: 170,
-    sample_query: "Maybelline New York Lash Sensational Sky High Mascara Waterproof",
-    image: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=500&auto=format&fit=crop&q=60",
-  },
-  {
-    title: "Dot & Key Watermelon Cooling Sunscreen SPF 50 (50g)",
-    brand: "Dot & Key",
-    category: "Skincare",
-    cultureTag: "SUMMER GRAIL ☀️",
-    best_price: 379,
-    mrp: 495,
-    best_store: "Nykaa",
-    savings: 116,
-    sample_query: "Dot & Key Watermelon Cooling Sunscreen SPF 50",
-    image: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500&auto=format&fit=crop&q=60",
+    sample_query: "Maybelline Lash Sensational Sky High Mascara",
+    image: "https://images.unsplash.com/photo-1586495777744-4413f21062fa?auto=format&fit=crop&w=500&q=80",
   },
   {
     title: "The Ordinary Niacinamide 10% + Zinc 1% (30ml)",
     brand: "The Ordinary",
     category: "Skincare",
-    cultureTag: "CULT CLASSIC 🧪",
+    culture_tag: "CULT CLASSIC 🧪",
     best_price: 560,
     mrp: 700,
     best_store: "Nykaa",
+    fastest_store: "Tira Express",
     savings: 140,
     sample_query: "The Ordinary Niacinamide 10% Zinc 1% 30ml",
-    image: "https://images.unsplash.com/photo-1601049541289-9b1b7bbbfe19?w=500&auto=format&fit=crop&q=60",
+    image: "https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?auto=format&fit=crop&w=500&q=80",
   },
   {
     title: "Cetaphil Gentle Skin Cleanser (125ml)",
     brand: "Cetaphil",
     category: "Skincare",
-    cultureTag: "DERM CHOICE 🩺",
-    best_price: 369,
+    culture_tag: "DERM CHOICE 🩺",
+    best_price: 349,
     mrp: 425,
     best_store: "Tira",
-    savings: 56,
-    sample_query: "Cetaphil Gentle Skin Cleanser Dry to Normal Sensitive Skin 125ml",
-    image: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500&auto=format&fit=crop&q=60",
+    fastest_store: "Amazon Prime",
+    savings: 76,
+    sample_query: "Cetaphil Gentle Skin Cleanser 125ml",
+    image: "https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=500&q=80",
   },
 ];
 
@@ -194,6 +179,15 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [currentQuery, setCurrentQuery] = useState<string>("");
   const [trendingViewMode, setTrendingViewMode] = useState<"columns" | "list">("columns");
+  const [trendingItems, setTrendingItems] = useState<TrendingItem[]>(UNISEX_TRENDING_ITEMS);
+
+  useEffect(() => {
+    getTrendingProducts().then((items) => {
+      if (items && items.length > 0) {
+        setTrendingItems(items);
+      }
+    });
+  }, []);
 
   const { showSuccessToast, showErrorToast } = useSnackbar();
 
@@ -521,7 +515,7 @@ export default function HomePage() {
               {/* MOBILE LIST VIEW for Trending Products */}
               {trendingViewMode === "list" && (
                 <div className="flex flex-col gap-2.5 sm:hidden w-full min-w-0">
-                  {UNISEX_TRENDING_ITEMS.map((item, idx) => (
+                  {trendingItems.map((item, idx) => (
                     <motion.div
                       key={item.title}
                       initial={{ opacity: 0, y: 8 }}
@@ -532,17 +526,12 @@ export default function HomePage() {
                       className="p-3 rounded-2xl bg-white border border-zinc-200 hover:border-zinc-300 shadow-xs flex items-center gap-3 cursor-pointer w-full min-w-0"
                     >
                       <div className="w-16 h-16 rounded-xl bg-zinc-100 overflow-hidden relative shrink-0">
-                        <img
+                        <ImageWithFallback
                           src={item.image}
                           alt={item.title}
+                          category={item.category}
+                          brand={item.brand}
                           className="w-full h-full object-cover"
-                          onError={(e) => {
-                            const target = e.currentTarget;
-                            if (!target.dataset.fallback) {
-                              target.dataset.fallback = "true";
-                              target.src = "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500&auto=format&fit=crop&q=60";
-                            }
-                          }}
                         />
                         <div className="absolute bottom-0 inset-x-0 bg-emerald-600 text-white text-[9px] font-black text-center py-0.5">
                           -₹{item.savings} W
@@ -555,7 +544,7 @@ export default function HomePage() {
                             {item.brand}
                           </span>
                           <span className="text-[9px] font-black uppercase tracking-wider bg-zinc-100 text-zinc-700 px-1.5 py-0.2 rounded">
-                            {item.cultureTag}
+                            {item.culture_tag || (item as any).cultureTag || "VIRAL DEAL 🔥"}
                           </span>
                         </div>
                         <h3 className="font-bold text-xs text-zinc-950 line-clamp-1 leading-snug">
@@ -590,7 +579,7 @@ export default function HomePage() {
                     : "grid grid-cols-1 sm:grid-cols-2"
                 }`}
               >
-                {UNISEX_TRENDING_ITEMS.map((item, idx) => (
+                {trendingItems.map((item, idx) => (
                   <motion.div
                     key={item.title}
                     initial={{ opacity: 0, y: 10 }}
@@ -601,24 +590,19 @@ export default function HomePage() {
                     className="group p-3.5 rounded-2xl bg-white border border-zinc-200 hover:border-zinc-400 hover:shadow-xl transition-all duration-200 cursor-pointer flex flex-col justify-between min-w-0 overflow-hidden"
                   >
                     <div className="aspect-[4/3] w-full rounded-xl bg-zinc-100 overflow-hidden mb-3 relative">
-                      <img
+                      <ImageWithFallback
                         src={item.image}
                         alt={item.title}
+                        category={item.category}
+                        brand={item.brand}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        onError={(e) => {
-                          const target = e.currentTarget;
-                          if (!target.dataset.fallback) {
-                            target.dataset.fallback = "true";
-                            target.src = "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=500&auto=format&fit=crop&q=60";
-                          }
-                        }}
                       />
                       <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-zinc-950 text-white shadow-md flex items-center gap-1">
                         <span className="text-emerald-400 font-bold">Save ₹{item.savings}</span>
                         <span>(W)</span>
                       </div>
                       <div className="absolute bottom-2.5 left-2.5 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-white/95 text-zinc-900 backdrop-blur-xs shadow-xs">
-                        {item.cultureTag}
+                        {item.culture_tag || (item as any).cultureTag || "VIRAL DEAL 🔥"}
                       </div>
                     </div>
 

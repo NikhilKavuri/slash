@@ -73,6 +73,34 @@ STORE_PERKS = {
         "delivery_badge": "Express 2-Day Delivery",
         "delivery_type": "standard",
         "logo_color": "#FC2779"
+    },
+    "Flipkart": {
+        "coupon_code": "FKFIRST",
+        "coupon_desc": "Extra ₹100 OFF with SuperCoins",
+        "delivery_badge": "Flipkart Assured Delivery",
+        "delivery_type": "standard",
+        "logo_color": "#2874F0"
+    },
+    "Boult Audio": {
+        "coupon_code": "BOULT10",
+        "coupon_desc": "Extra 10% OFF on Official Store",
+        "delivery_badge": "Official Direct Brand Shipping",
+        "delivery_type": "standard",
+        "logo_color": "#111827"
+    },
+    "HealthKart": {
+        "coupon_code": "HKFIRST",
+        "coupon_desc": "Flat 10% OFF + Authenticity Certificate",
+        "delivery_badge": "Direct Brand Distributor",
+        "delivery_type": "standard",
+        "logo_color": "#00A699"
+    },
+    "Croma": {
+        "coupon_code": "TATA200",
+        "coupon_desc": "Instant ₹200 OFF on Electronic Drops",
+        "delivery_badge": "Tata Express Store Delivery",
+        "delivery_type": "standard",
+        "logo_color": "#00E9BF"
     }
 }
 

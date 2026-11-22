@@ -32,6 +32,9 @@ export interface StoreOffer {
   is_best_price: boolean;
   is_fastest_delivery: boolean;
   savings_vs_mrp: number;
+  is_scam_flagged?: boolean;
+  scam_warning?: string;
+  authenticity_score?: number;
 }
 
 export interface StoreCustomerReview {
@@ -54,6 +57,7 @@ export interface ReviewLensSummary {
   skin_type_or_fit?: string;
   authenticity_confidence: string;
   seller_guarantee?: string;
+  scam_filter_status?: string;
   customer_reviews?: StoreCustomerReview[];
 }
 
@@ -80,11 +84,13 @@ export interface TrendingItem {
   title: string;
   brand: string;
   category: string;
+  culture_tag?: string;
   best_price: number;
   mrp: number;
   best_store: string;
   fastest_store: string;
   savings: number;
+  discount_percent?: number;
   sample_query: string;
   image: string;
 }

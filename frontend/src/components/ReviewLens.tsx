@@ -43,6 +43,19 @@ export function ReviewLens({ summary }: ReviewLensProps) {
         </div>
       </div>
 
+      {/* Anti-Scam Verification Lens Status */}
+      {summary.scam_filter_status && (
+        <div className="p-3 rounded-2xl bg-emerald-50/70 border border-emerald-300 flex items-center justify-between gap-2 text-xs text-emerald-950 font-semibold">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Anti-Scam Lens: {summary.scam_filter_status}</span>
+          </div>
+          <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-600 text-white px-2 py-0.5 rounded-full shrink-0">
+            Active
+          </span>
+        </div>
+      )}
+
       {/* The Verdict: Is it worth the hype? */}
       <div className="p-3.5 rounded-2xl bg-zinc-950 text-white border border-zinc-800 space-y-1">
         <div className="text-[10px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">

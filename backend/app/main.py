@@ -189,13 +189,28 @@ async def test_scrape(q: str = "Philips BT1232 Trimmer"):
     clean_q = quote_plus(q)
     amz_url = f"https://www.amazon.in/s?k={clean_q}"
     fk_url = f"https://www.flipkart.com/search?q={clean_q}"
+    g_url = f"https://www.google.com/search?tbm=shop&q={clean_q}&gl=in&hl=en"
     
     amz_html = await fetch_page_html(amz_url)
     fk_html = await fetch_page_html(fk_url)
+    g_html = await fetch_page_html(g_url)
     
     amz_soup = BeautifulSoup(amz_html or "", "html.parser")
     fk_soup = BeautifulSoup(fk_html or "", "html.parser")
+    g_soup = BeautifulSoup(g_html or "", "html.parser")
     
+    # Inspect Flipkart card structure
+    fk_sample = []
+    items = fk_soup.select('div._75nlfW, div[data-id], div._1AtVbE')
+    for it in items[:3]:
+        fk_sample.append({
+            "classes": it.get("class"),
+            "data_id": it.get("data_id"),
+            "text_snippet": it.text[:120],
+            "links": [a.get("href") for a in it.select("a") if a.get("href")][:2],
+            "price_match": [p.text for p in it.select('[class*="Nx9bqj"], [class*="_30jeq3"], [class*="price"]')]
+        })
+
     return {
         "amazon": {
             "html_len": len(amz_html or ""),
@@ -207,9 +222,15 @@ async def test_scrape(q: str = "Philips BT1232 Trimmer"):
         "flipkart": {
             "html_len": len(fk_html or ""),
             "title": fk_soup.title.string if fk_soup.title else None,
-            "has_blocking": any(b in (fk_html or "").lower() for b in ["access denied", "robot", "block"]),
-            "items_count": len(fk_soup.select('div._75nlfW, div[data-id], div._1AtVbE')),
+            "items_count": len(items),
+            "sample_cards": fk_sample,
             "parsed": parse_flipkart_search(fk_html or "")[:2]
+        },
+        "google_shopping": {
+            "html_len": len(g_html or ""),
+            "title": g_soup.title.string if g_soup.title else None,
+            "results_count": len(g_soup.select('div.sh-dgr__content, div[data-docid]')),
+            "sample_text": g_soup.text[:200]
         }
     }
 

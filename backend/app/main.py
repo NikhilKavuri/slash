@@ -201,15 +201,25 @@ async def test_scrape(q: str = "Philips BT1232 Trimmer"):
     bing_soup = BeautifulSoup(bing_html or "", "html.parser")
     
     # Inspect Croma links and structure
-    croma_links = [a.get("href") for a in cr_soup.select("a") if a.get("href") and ("/p/" in a.get("href") or "product" in a.get("href").lower())][:5]
-    croma_classes = list(set([cls for el in cr_soup.find_all(True) for cls in (el.get("class") or []) if any(k in cls.lower() for k in ["product", "item", "card", "plp"])]))[:10]
+    croma_cards = cr_soup.select("[class*='product-wrap'], [class*='plp-srp-newdesign'], [class*='cp-product']")
+    croma_sample = []
+    for c in croma_cards[:3]:
+        croma_sample.append({
+            "classes": c.get("class"),
+            "text": c.text[:150],
+            "links": [a.get("href") for a in c.select("a") if a.get("href")][:3]
+        })
     
-    # Inspect Bing search results for Amazon
-    bing_links = []
-    for a in bing_soup.select("li.b_algo h2 a, a[href*='amazon.in']"):
-        href = a.get("href", "")
-        if "amazon.in" in href and ("/dp/" in href or "/gp/" in href):
-            bing_links.append({"title": a.text.strip(), "url": href})
+    # Inspect Bing search results
+    bing_sample = []
+    for it in bing_soup.select("li.b_algo")[:3]:
+        a = it.select_one("h2 a") or it.select_one("a")
+        snippet = it.select_one("p, .b_caption")
+        bing_sample.append({
+            "title": a.text.strip() if a else None,
+            "href": a.get("href") if a else None,
+            "snippet": snippet.text[:150] if snippet else None
+        })
 
     return {
         "flipkart": {
@@ -220,14 +230,13 @@ async def test_scrape(q: str = "Philips BT1232 Trimmer"):
         "croma": {
             "html_len": len(cr_html or ""),
             "title": cr_soup.title.string if cr_soup.title else None,
-            "detected_links": croma_links,
-            "detected_classes": croma_classes,
+            "sample": croma_sample,
             "parsed": parse_croma_search(cr_html or "")[:2]
         },
         "bing_amazon": {
             "html_len": len(bing_html or ""),
             "title": bing_soup.title.string if bing_soup.title else None,
-            "found_amazon_products": bing_links[:5]
+            "sample": bing_sample
         }
     }
 

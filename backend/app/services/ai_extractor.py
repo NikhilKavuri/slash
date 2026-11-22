@@ -38,6 +38,8 @@ KNOWN_BRANDS_LIST = [
     "L'Oreal Paris", "Maybelline", "Maybelline New York", "Laneige",
     "COSRX", "Innisfree", "Neutrogena", "Simple", "Biotique",
     "Himalaya", "Nivea", "Vaseline", "Pond's", "Dove",
+    "Apple", "Samsung", "OnePlus", "Google", "Xiaomi", "Realme", "Nothing",
+    "Sony", "Dell", "HP", "Lenovo", "Asus", "Acer", "Motorola", "JBL",
     "Boult", "boAt", "Noise", "Fire-Boltt", "Fastrack", "Titan",
     "Philips", "Havells", "MuscleBlaze", "Optimum Nutrition", "MyProtein",
     "NEWME", "Urbanic", "Savana", "Snitch", "Souled Store", "Biba",
@@ -130,7 +132,7 @@ KNOWN_ASINS = {
 }
 
 async def extract_url_metadata(url: str) -> Dict[str, Any]:
-    """Fetch OpenGraph tags, title, and schema microdata from the URL following all redirects."""
+    """Fetch OpenGraph tags, title, price, and schema microdata from the URL following all redirects."""
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -142,16 +144,20 @@ async def extract_url_metadata(url: str) -> Dict[str, Any]:
     }
     metadata = {
         "title": "",
+        "brand": "",
+        "category": "",
         "description": "",
         "image": "",
         "url": url,
         "final_url": url,
         "store": detect_store_from_url(url),
-        "asin": None
+        "asin": None,
+        "extracted_price": None,
+        "mrp": None
     }
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=3.0) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=7.0) as client:
             resp = await client.get(url, headers=headers)
             final_url = str(resp.url)
             metadata["final_url"] = final_url
@@ -165,21 +171,94 @@ async def extract_url_metadata(url: str) -> Dict[str, Any]:
             if resp.status_code == 200:
                 soup = BeautifulSoup(resp.text, "html.parser")
                 
-                # Check OpenGraph
+                # 1. Parse Schema.org JSON-LD microdata (highest accuracy for Flipkart, Nykaa, etc.)
+                for script in soup.find_all("script", type="application/ld+json"):
+                    if not script.string:
+                        continue
+                    try:
+                        raw_json = json.loads(script.string.strip())
+                        items = raw_json if isinstance(raw_json, list) else [raw_json]
+                        for item in items:
+                            if not isinstance(item, dict):
+                                continue
+                            if "name" in item and not metadata["title"]:
+                                metadata["title"] = str(item["name"]).strip()
+                            
+                            brand_val = item.get("brand")
+                            if isinstance(brand_val, dict):
+                                metadata["brand"] = brand_val.get("name", "")
+                            elif isinstance(brand_val, str):
+                                metadata["brand"] = brand_val
+
+                            if item.get("category") and not metadata["category"]:
+                                metadata["category"] = str(item["category"]).strip()
+
+                            img_val = item.get("image")
+                            if isinstance(img_val, list) and img_val and not metadata["image"]:
+                                metadata["image"] = str(img_val[0])
+                            elif isinstance(img_val, str) and img_val and not metadata["image"]:
+                                metadata["image"] = img_val
+
+                            offers_val = item.get("offers")
+                            if isinstance(offers_val, list) and offers_val:
+                                offers_val = offers_val[0]
+                            if isinstance(offers_val, dict):
+                                p_val = offers_val.get("price") or offers_val.get("lowPrice")
+                                if p_val and not metadata["extracted_price"]:
+                                    try:
+                                        metadata["extracted_price"] = float(str(p_val).replace(",", "").strip())
+                                    except (ValueError, TypeError):
+                                        pass
+                    except Exception:
+                        pass
+
+                # 2. Check OpenGraph tags
                 og_title = soup.find("meta", property="og:title")
                 og_desc = soup.find("meta", property="og:description")
                 og_image = soup.find("meta", property="og:image")
                 
-                if og_title and og_title.get("content"):
-                    metadata["title"] = og_title["content"].strip()
-                elif soup.title and soup.title.string:
-                    metadata["title"] = soup.title.string.strip()
+                if not metadata["title"]:
+                    if og_title and og_title.get("content"):
+                        metadata["title"] = og_title["content"].strip()
+                    elif soup.title and soup.title.string:
+                        metadata["title"] = soup.title.string.strip()
 
-                if og_desc and og_desc.get("content"):
+                if not metadata.get("description") and og_desc and og_desc.get("content"):
                     metadata["description"] = og_desc["content"].strip()
                 
-                if og_image and og_image.get("content"):
+                if not metadata.get("image") and og_image and og_image.get("content"):
                     metadata["image"] = og_image["content"].strip()
+
+                # 3. HTML Microdata & Price Classes if price still not extracted
+                if not metadata["extracted_price"]:
+                    price_meta = soup.find("meta", attrs={"itemprop": "price"})
+                    if price_meta and price_meta.get("content"):
+                        try:
+                            metadata["extracted_price"] = float(str(price_meta["content"]).replace(",", "").strip())
+                        except (ValueError, TypeError):
+                            pass
+
+                if not metadata["extracted_price"]:
+                    # Flipkart price classes (.Nx9bqj, ._30jeq3)
+                    fk_el = soup.find(class_=re.compile(r'(?:Nx9bqj|_30jeq3)'))
+                    if fk_el and fk_el.text:
+                        p_match = re.search(r'₹\s*([0-9,]+)', fk_el.text)
+                        if p_match:
+                            try:
+                                metadata["extracted_price"] = float(p_match.group(1).replace(",", ""))
+                            except ValueError:
+                                pass
+
+                if not metadata["extracted_price"]:
+                    # Amazon price classes (.a-price-whole, .apexPriceToPay)
+                    az_el = soup.find(class_=re.compile(r'(?:a-price-whole|apexPriceToPay)'))
+                    if az_el and az_el.text:
+                        p_match = re.search(r'([0-9,]+)', az_el.text)
+                        if p_match:
+                            try:
+                                metadata["extracted_price"] = float(p_match.group(1).replace(",", ""))
+                            except ValueError:
+                                pass
     except Exception as e:
         logger.warning(f"Could not scrape URL directly: {e}. Falling back to URL path parsing.")
     
@@ -202,22 +281,27 @@ async def extract_url_metadata(url: str) -> Dict[str, Any]:
 
     # Fallback if title still empty: extract clean text from URL path
     if not metadata["title"]:
-        cleaned_path = re.sub(r'[/_\-\?=&]', ' ', path)
-        cleaned_path = re.sub(r'\b(p|dp|product|item|buy|online|in|html)\b', '', cleaned_path, flags=re.I)
-        words = cleaned_path.split()
-        if len(words) == 1 and re.match(r'^[A-Z0-9]{8,12}$', words[0]):
-            metadata["title"] = ""
-        else:
+        # Strip catalog IDs, hash slugs, and query tails like /p/itmc61b40459dd98 or /p/12345
+        slug_path = re.sub(r'/(?:p|dp|prid|pid)/[a-zA-Z0-9_\-]+.*$', '', path)
+        cleaned_path = re.sub(r'[/_\-\?=&]', ' ', slug_path)
+        cleaned_path = re.sub(r'\b(p|dp|product|prn|item|buy|online|in|html|prid|pid|itmc[a-z0-9]+)\b', '', cleaned_path, flags=re.I)
+        words = [w for w in cleaned_path.split() if not re.match(r'^[a-z0-9]{12,}$', w, re.I)]
+        if words:
             metadata["title"] = " ".join(words)
 
-    # Extract embedded price if present in title (e.g. "at ₹341 in India" or "Price: ₹341")
-    price_match = re.search(r'₹\s*(\d+(?:\.\d+)?)', metadata["title"]) or re.search(r'at\s*Rs\.?\s*(\d+(?:\.\d+)?)', metadata["title"], re.I)
-    metadata["extracted_price"] = float(price_match.group(1)) if price_match else None
+    # Extract embedded price if present in title
+    if not metadata["extracted_price"]:
+        price_match = re.search(r'₹\s*([0-9,]+(?:\.\d+)?)', metadata["title"]) or re.search(r'at\s*Rs\.?\s*([0-9,]+(?:\.\d+)?)', metadata["title"], re.I)
+        if price_match:
+            try:
+                metadata["extracted_price"] = float(price_match.group(1).replace(",", ""))
+            except ValueError:
+                pass
 
     # Clean promotional and SEO title suffixes
     clean_title = metadata["title"]
     clean_title = re.sub(
-        r'\s*(?:Price\s*[-–—:]\s*Buy\s*Online.*|Buy\s*Online.*|at\s*Best\s*Price.*|at\s*₹\s*\d+.*|in\s*India.*)',
+        r'\s*(?:Price\s*[-–—:]\s*Buy\s*Online.*|Buy\s*Online.*|at\s*Best\s*Price.*|at\s*₹\s*\d+.*|in\s*India.*|Online\s*at\s*Best\s*Price.*|\.com.*)',
         '',
         clean_title,
         flags=re.I
@@ -295,10 +379,10 @@ Analyze the following shopping link metadata or query:
 TASK:
 Extract the exact, authentic product identity without marketing fluff or retailer noise.
 Rules:
-1. Identify the exact Brand (e.g. Cetaphil, Minimalist, Maybelline, Dot & Key, L'Oreal, Laneige, Philips, MuscleBlaze, NEWME, The Ordinary). CRITICAL: Store names like "Blinkit", "Amazon", "Nykaa", "Flipkart", "Zepto", "Tira" are RETAIL PLATFORMS, NEVER the product brand!
-2. Extract the core Product Name (e.g. DAM Daily Advance Ultra Hydrating Moisturizing Lotion). Do NOT include promotional words like "Price", "Buy Online", or "in India".
-3. Extract the Variant/Volume/Shade if present (e.g. 100g, 30ml, 50ml, Shade 128 Warm Nude, 20g, 1kg).
-4. Assign the appropriate category: Skincare, Makeup, Haircare, Fragrance, Fashion & Apparel, Grooming, or Fitness & Nutrition.
+1. Identify the exact Brand (e.g. Apple, Samsung, OnePlus, Sony, Cetaphil, Minimalist, Maybelline, Dot & Key, L'Oreal, Laneige, Philips, MuscleBlaze, NEWME, The Ordinary). CRITICAL: Store names like "Blinkit", "Amazon", "Nykaa", "Flipkart", "Zepto", "Tira", "Croma" are RETAIL PLATFORMS, NEVER the product brand!
+2. Extract the core Product Name (e.g. iPhone 17, DAM Daily Advance Ultra Hydrating Moisturizing Lotion). Do NOT include promotional words like "Price", "Buy Online", or "in India".
+3. Extract the Variant/Volume/Storage/Shade if present (e.g. 256GB Black, 100g, 30ml, 50ml, Shade 128 Warm Nude, 20g, 1kg).
+4. Assign the appropriate category: Electronics & Gadgets, Skincare, Makeup, Haircare, Fragrance, Fashion & Apparel, Grooming, or Fitness & Nutrition.
 5. Generate the normalized_title combining Brand + Product Name + Variant.
 6. Generate an optimized search_query for searching this exact SKU across other Indian stores.
 7. If this is an invalid link, 404, or the product CANNOT be identified, set "found": false with an explanation.
@@ -408,11 +492,25 @@ If not found:
 
             img_url = data.get("image_url") if (data.get("image_url") and "http" in str(data.get("image_url"))) else thumbnail
 
+            raw_cat = data.get("category", "")
+            text_check = f"{brand} {product_name}".lower()
+            if not raw_cat or raw_cat == "Beauty & Personal Care":
+                if any(k in text_check for k in ["iphone", "apple", "samsung", "phone", "mobile", "smartphone", "laptop", "macbook", "watch", "smartwatch", "audio", "headphone", "earphone", "earbuds", "croma", "electronic", "gadget"]):
+                    raw_cat = "Electronics & Gadgets"
+                elif any(k in text_check for k in ["whey", "protein", "creatine", "supplement", "nutrition"]):
+                    raw_cat = "Fitness & Nutrition"
+                elif any(k in text_check for k in ["top", "dress", "shirt", "jeans", "pant", "hoodie", "skirt"]):
+                    raw_cat = "Fashion & Apparel"
+                elif any(k in text_check for k in ["trimmer", "shaver", "razor", "beard"]):
+                    raw_cat = "Grooming"
+                else:
+                    raw_cat = raw_cat or "Beauty & Personal Care"
+
             return NormalizedProduct(
                 brand=brand,
                 product_name=product_name,
                 variant=data.get("variant"),
-                category=data.get("category", "Beauty & Personal Care"),
+                category=raw_cat,
                 normalized_title=data.get("normalized_title", f"{brand} {product_name}"),
                 search_query=data.get("search_query", f"{brand} {product_name}"),
                 source_store=store,
@@ -458,7 +556,9 @@ If not found:
             break
 
     if brand_guess == "Generic":
-        if store in ["NEWME", "Boult", "boAt", "Urbanic", "Savana"]:
+        if is_url and meta.get("brand"):
+            brand_guess = meta["brand"].capitalize()
+        elif store in ["NEWME", "Boult", "boAt", "Urbanic", "Savana"]:
             brand_guess = store
         else:
             words = clean_title.split()
@@ -466,9 +566,28 @@ If not found:
                 brand_guess = words[0]
                 clean_title = " ".join(words[1:]) if len(words) > 1 else clean_title
 
-    fashion_keywords = ["top", "dress", "jeans", "shirt", "skirt", "kurta", "pant", "hoodie", "tshirt", "t-shirt", "corset", "tube", "blazer", "trouser", "sweatshirt"]
-    is_fashion = any(kw in clean_title.lower() for kw in fashion_keywords) or store in ["NEWME", "Myntra", "Ajio", "Urbanic"]
-    category = "Fashion & Apparel" if is_fashion else "Beauty & Personal Care"
+    # Intelligent Category Detection
+    text_lower = f"{brand_guess} {clean_title}".lower()
+    electronics_kw = [
+        "iphone", "apple", "samsung", "oneplus", "google", "xiaomi", "realme", "nothing",
+        "phone", "mobile", "smartphone", "android", "laptop", "macbook", "watch", "smartwatch",
+        "audio", "headphone", "earphone", "earbuds", "tv", "tablet", "ipad", "charger",
+        "camera", "speaker", "bluetooth", "croma", "electronic", "gadget"
+    ]
+    fitness_kw = ["whey", "protein", "creatine", "bcaa", "mass gainer", "supplement", "multivitamin", "nutrition", "gym"]
+    fashion_kw = ["top", "dress", "jeans", "shirt", "skirt", "kurta", "pant", "hoodie", "tshirt", "t-shirt", "corset", "tube", "blazer", "trouser", "sweatshirt", "saree"]
+    grooming_kw = ["trimmer", "shaver", "razor", "beard", "clipper"]
+
+    if any(kw in text_lower for kw in electronics_kw):
+        category = "Electronics & Gadgets"
+    elif any(kw in text_lower for kw in fitness_kw):
+        category = "Fitness & Nutrition"
+    elif any(kw in text_lower for kw in fashion_kw) or store in ["NEWME", "Myntra", "Ajio", "Urbanic"]:
+        category = "Fashion & Apparel"
+    elif any(kw in text_lower for kw in grooming_kw):
+        category = "Grooming"
+    else:
+        category = "Beauty & Personal Care"
 
     normalized_title = f"{brand_guess} {clean_title}" if brand_guess.lower() not in clean_title.lower() else clean_title
 

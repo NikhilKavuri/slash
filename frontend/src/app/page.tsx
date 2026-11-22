@@ -156,10 +156,16 @@ export default function HomePage() {
   const handleSearch = async (query: string) => {
     setCurrentQuery(query);
     setIsLoading(true);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
 
     try {
       const data = await compareProduct(query);
       setResult(data);
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
 
       if (data.not_found || !data.offers || data.offers.length === 0) {
         showErrorToast(

@@ -123,7 +123,14 @@ async def search_exact_products_with_gemini(
 
     try:
         genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
-        model = genai.GenerativeModel(model_name="gemini-flash-latest")
+        try:
+            model = genai.GenerativeModel(
+                model_name="gemini-1.5-flash",
+                tools=[{"google_search_retrieval": {}}]
+            )
+        except Exception as tool_err:
+            logger.warning(f"Google Search tool init error ({tool_err}), falling back to standard model")
+            model = genai.GenerativeModel(model_name="gemini-flash-latest")
 
         if target_stores and len(target_stores) > 0:
             stores_formatted = "\n".join([f"- {s}" for s in target_stores])
@@ -194,14 +201,15 @@ Return ONLY a valid JSON object:
 }}
 
 IMPORTANT: It is MUCH better to return "available": false than to return a wrong URL, wrong product, or guessed price. Quality over quantity.
+Return ONLY raw JSON, starting with {{ and ending with }}.
 """
         text = ""
         try:
             response = await asyncio.to_thread(
                 model.generate_content,
                 prompt,
-                generation_config={"response_mime_type": "application/json"},
-                request_options={"timeout": 4.0, "retry": None}
+                generation_config={"temperature": 0.1},
+                request_options={"timeout": 8.0, "retry": None}
             )
             try:
                 text = response.text

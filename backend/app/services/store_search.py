@@ -105,7 +105,7 @@ def _get_target_stores(product: NormalizedProduct) -> List[str]:
     is_electronics = any(k in category_lower or k in text_lower for k in [
         "electronic", "wearable", "gadget", "watch", "smartwatch", "audio",
         "headphone", "earphone", "trimmer", "shaver", "grooming", "laptop",
-        "mobile", "phone"
+        "mobile", "phone", "iphone", "apple", "samsung", "oneplus", "tv", "tablet", "ipad"
     ])
     is_fitness = any(k in category_lower or k in text_lower for k in [
         "fitness", "nutrition", "protein", "whey", "supplement", "creatine", "gym"
@@ -116,8 +116,8 @@ def _get_target_stores(product: NormalizedProduct) -> List[str]:
         stores = [
             "Amazon India (amazon.in)",
             "Flipkart (flipkart.com)",
-            f"{product.brand} Official Store ({product.brand.lower()}.co.in or go{product.brand.lower()}.co.in)",
             "Croma (croma.com)",
+            "Reliance Digital (reliancedigital.in)",
         ]
     elif is_fitness:
         stores = [
@@ -318,52 +318,68 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
                 existing_src.final_price = float(max(1.0, existing_src.price - existing_src.coupon_discount))
                 existing_src.savings_vs_mrp = float(existing_src.mrp - existing_src.final_price)
         else:
-            src_price = getattr(product, "extracted_price", None) or (offers[0].price if offers else None) or 341.0
-            src_mrp = round(src_price * 1.25, 2)
-            perks = affiliate_router.get_store_perks(source_canonical)
+            src_price = getattr(product, "extracted_price", None) or (offers[0].price if offers else None)
+            if src_price and float(src_price) > 0:
+                src_price = float(src_price)
+                src_mrp = getattr(product, "mrp", None) or round(src_price * 1.25, 2)
+                perks = affiliate_router.get_store_perks(source_canonical)
 
-            coupon_cut = 0.0
-            if perks.get("coupon_code"):
-                code = perks["coupon_code"]
-                if "20" in code:
-                    coupon_cut = round(src_price * 0.20)
-                elif "15" in code:
-                    coupon_cut = round(src_price * 0.15)
-                elif "10" in code:
-                    coupon_cut = round(src_price * 0.10)
-                elif "5" in code:
-                    coupon_cut = round(src_price * 0.05)
+                coupon_cut = 0.0
+                if perks.get("coupon_code"):
+                    code = perks["coupon_code"]
+                    if "20" in code and "TIRA" in code:
+                        coupon_cut = round(src_price * 0.20) if src_price >= 999 else 0.0
+                    elif "10" in code and "BEAUTY" in code:
+                        coupon_cut = round(src_price * 0.10) if src_price >= 1299 else 0.0
+                    elif "5" in code and "AMZ" in code:
+                        coupon_cut = min(500.0, round(src_price * 0.05))
+                    elif "200" in code:
+                        coupon_cut = 200.0 if src_price >= 1000 else 0.0
+                    elif "100" in code:
+                        coupon_cut = 100.0 if src_price >= 500 else 0.0
 
-            f_price = float(max(1.0, src_price - coupon_cut))
-            savings = float(src_mrp - f_price)
-            disc_pct = int(round((savings / src_mrp) * 100))
+                f_price = float(max(1.0, src_price - coupon_cut))
+                savings = float(src_mrp - f_price)
+                disc_pct = int(round((savings / src_mrp) * 100))
 
-            src_offer = StoreOffer(
-                store_name=source_canonical,
-                seller_name=f"{source_canonical} Official Verified Retailer",
-                authenticity_badge="100% Genuine Verified Sourced",
-                price=float(src_price),
-                mrp=float(src_mrp),
-                discount_percent=int(round(((src_mrp - src_price) / src_mrp) * 100)),
-                in_stock=True,
-                rating=4.6,
-                review_count=1750,
-                store_url=product.original_url,
-                affiliate_url=affiliate_router.wrap_affiliate_url(source_canonical, product.original_url),
-                delivery_badge=perks.get("delivery_badge", "Instant 10-15 Min Delivery"),
-                delivery_type=perks.get("delivery_type", "instant"),
-                coupon_code=perks.get("coupon_code"),
-                coupon_desc=perks.get("coupon_desc"),
-                coupon_discount=float(coupon_cut),
-                final_price=f_price,
-                total_discount_percent=disc_pct,
-                savings_vs_mrp=savings,
-                is_scam_flagged=False,
-                scam_warning=None,
-                authenticity_score=99,
-                image_url=product.thumbnail_url,
-            )
-            offers.append(src_offer)
+                deliv_badge = perks.get("delivery_badge", "Standard Delivery")
+                deliv_type = perks.get("delivery_type", "standard")
+                if "blinkit" in source_canonical.lower() or "zepto" in source_canonical.lower():
+                    deliv_badge = "Instant 10-15 Min Delivery"
+                    deliv_type = "instant"
+                elif "amazon" in source_canonical.lower():
+                    deliv_badge = "Prime Next-Day Delivery"
+                    deliv_type = "express"
+                elif "flipkart" in source_canonical.lower():
+                    deliv_badge = "Flipkart Assured Delivery"
+                    deliv_type = "standard"
+
+                src_offer = StoreOffer(
+                    store_name=source_canonical,
+                    seller_name=f"{source_canonical} Official Verified Retailer",
+                    authenticity_badge="100% Genuine Verified Sourced",
+                    price=float(src_price),
+                    mrp=float(src_mrp),
+                    discount_percent=int(round(((src_mrp - src_price) / src_mrp) * 100)),
+                    in_stock=True,
+                    rating=4.6,
+                    review_count=1750,
+                    store_url=product.original_url,
+                    affiliate_url=affiliate_router.wrap_affiliate_url(source_canonical, product.original_url),
+                    delivery_badge=deliv_badge,
+                    delivery_type=deliv_type,
+                    coupon_code=perks.get("coupon_code"),
+                    coupon_desc=perks.get("coupon_desc"),
+                    coupon_discount=float(coupon_cut),
+                    final_price=f_price,
+                    total_discount_percent=disc_pct,
+                    savings_vs_mrp=savings,
+                    is_scam_flagged=False,
+                    scam_warning=None,
+                    authenticity_score=99,
+                    image_url=product.thumbnail_url or (offers[0].image_url if offers else None),
+                )
+                offers.append(src_offer)
 
     # If Gemini returned no results or only 1 offer, check if we have verified price points in Supabase
     if len(offers) <= 1:

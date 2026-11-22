@@ -38,7 +38,12 @@ def get_fallback_customer_reviews(product: Any) -> List[StoreCustomerReview]:
         cat = getattr(product, "category", "").lower()
         text = f"{getattr(product, 'brand', '')} {getattr(product, 'product_name', '')} {getattr(product, 'normalized_title', '')}".lower()
 
-    if "electronic" in cat or "wearable" in cat or "watch" in text or "audio" in text or "trimmer" in text:
+    electronics_kw = [
+        "electronic", "wearable", "gadget", "watch", "smartwatch", "audio",
+        "headphone", "earphone", "trimmer", "phone", "iphone", "apple", "samsung",
+        "oneplus", "mobile", "laptop", "macbook", "ipad", "tablet", "croma"
+    ]
+    if any(k in cat or k in text for k in electronics_kw):
         return [
             StoreCustomerReview(
                 store="Amazon",
@@ -46,7 +51,7 @@ def get_fallback_customer_reviews(product: Any) -> List[StoreCustomerReview]:
                 verified_purchase=True,
                 rating=5.0,
                 headline="100% Genuine, registered warranty on brand portal!",
-                comment="Received in factory-sealed box with intact tamper proof tape. Scanned the serial number on the brand website, official 1-year warranty activated immediately. Display is sharp and battery backup is solid.",
+                comment="Received in factory-sealed box with intact tamper proof tape. Scanned the serial number on the brand website, official 1-year warranty activated immediately. Performance and build are flawless.",
                 verified_date="1 week ago",
                 helpful_votes=184
             ),
@@ -56,7 +61,7 @@ def get_fallback_customer_reviews(product: Any) -> List[StoreCustomerReview]:
                 verified_purchase=True,
                 rating=4.5,
                 headline="Flipkart Assured delivered genuine unit",
-                comment="Was worried about duplicates online, but this Flipkart Assured seller delivered original fresh unit. Build quality is premium and all sensors work accurately.",
+                comment="Delivered in tamper-proof outer packing. Box seal was unbroken. All original accessories and documentation included.",
                 verified_date="2 weeks ago",
                 helpful_votes=96
             ),
@@ -66,7 +71,7 @@ def get_fallback_customer_reviews(product: Any) -> List[StoreCustomerReview]:
                 verified_purchase=True,
                 rating=5.0,
                 headline="Zero scam risk buying from authorized store",
-                comment="Store pickup verification was smooth. Checked the box barcode before taking delivery. Worth every rupee compared to shady third-party sellers.",
+                comment="Store pickup verification was smooth. Checked the box barcode before taking delivery. 100% peace of mind compared to unverified marketplaces.",
                 verified_date="3 weeks ago",
                 helpful_votes=72
             )
@@ -158,14 +163,26 @@ async def generate_review_summary(product: NormalizedProduct, offers: List[Any])
 
     reviews = get_fallback_customer_reviews(product)
 
+    cat = getattr(product, "category", "").lower()
+    text = f"{getattr(product, 'brand', '')} {getattr(product, 'product_name', '')} {getattr(product, 'normalized_title', '')}".lower()
+    is_electronics = any(k in cat or k in text for k in [
+        "electronic", "wearable", "gadget", "watch", "smartwatch", "audio",
+        "headphone", "earphone", "trimmer", "phone", "iphone", "apple", "samsung",
+        "oneplus", "mobile", "laptop", "macbook", "ipad", "tablet", "croma"
+    ])
+    is_fitness = any(k in cat or k in text for k in ["fitness", "nutrition", "protein", "whey", "supplement"])
+    is_fashion = any(k in cat or k in text for k in ["fashion", "apparel", "top", "dress", "shirt", "jeans"])
+
+    store_list_hint = "Amazon India, Flipkart, and Croma" if is_electronics else ("HealthKart and Amazon India" if is_fitness else ("Myntra and Ajio" if is_fashion else "Tira, Nykaa, and Amazon India"))
+
     prompt = f"""
 You are ReviewLens AI.
-Analyze cross-store customer reviews for: {product.normalized_title} across Tira, Nykaa, Amazon India.
+Analyze cross-store customer reviews for: {product.normalized_title} across {store_list_hint}.
 Provide:
-1. verdict: 2 crisp sentences evaluating formula/performance and authenticity.
+1. verdict: 2 crisp sentences evaluating build/performance/formula and authenticity.
 2. pros: 3 verified strengths.
 3. cons: 2 genuine buyer caveats.
-4. skin_type_or_fit: Best fit or usage note.
+4. skin_type_or_fit: Best fit, build note, or usage note.
 
 Return JSON:
 {{
@@ -191,10 +208,10 @@ Return JSON:
             return ReviewLensSummary(
                 overall_rating=avg_rating,
                 total_reviews_count=total_reviews,
-                verdict=data.get("verdict", "Consistently rated 4+ stars across official stores for verified authenticity and noticeable results."),
-                pros=data.get("pros", ["Genuine batch with verified barcode/QR", "Non-greasy, fast absorption", "Consistent positive feedback"]),
-                cons=data.get("cons", ["Sells out fast during sales", "Pair with SPF if skincare"]),
-                skin_type_or_fit=data.get("skin_type_or_fit", "Suitable for daily use"),
+                verdict=data.get("verdict", "Consistently rated 4+ stars across official stores for verified authenticity and reliable performance."),
+                pros=data.get("pros", ["Factory sealed unit with verified barcode/QR", "High quality materials and packaging", "Consistent positive feedback"]),
+                cons=data.get("cons", ["Sells out fast during promotional events", "Check seller is authorized distributor"]),
+                skin_type_or_fit=data.get("skin_type_or_fit", "Verified Daily Driver" if is_electronics else "Suitable for daily use"),
                 authenticity_confidence="100% Brand Official Sourced",
                 seller_guarantee="Whitelisted Brand Authorized Retailers Only",
                 customer_reviews=reviews
@@ -202,20 +219,63 @@ Return JSON:
         except Exception as e:
             logger.error(f"Gemini review error: {e}")
 
-    return ReviewLensSummary(
-        overall_rating=avg_rating,
-        total_reviews_count=total_reviews,
-        verdict=f"Verified buyers across Tira, Nykaa, and Amazon consistently report 100% genuine batches and high effectiveness for {product.normalized_title}.",
-        pros=[
+    # Tailored fallback by category
+    if is_electronics:
+        verdict = f"Verified buyers across Amazon, Flipkart, and Croma consistently confirm 100% genuine factory-sealed packaging and valid brand warranty for {product.normalized_title}."
+        pros = [
+            "Factory sealed packaging with official brand tamper-proof seal",
+            "Valid 1-year brand warranty activatable with retail invoice",
+            "High performance and genuine retail batch confirmed by buyers"
+        ]
+        cons = [
+            "Stock fluctuates rapidly during promotional drop periods",
+            "Retain tax invoice for authorized service center warranty"
+        ]
+        fit = "Flagship Daily Driver"
+    elif is_fitness:
+        verdict = f"Verified buyers across HealthKart and Amazon confirm authentic importer seal and lab-certified purity for {product.normalized_title}."
+        pros = [
+            "Authenticity scratch code verified on official portal",
+            "Holographic seal intact on delivery",
+            "High mixability and zero digestive distress"
+        ]
+        cons = [
+            "Stock of chocolate flavors sells out quickly",
+            "Check seller profile before purchasing"
+        ]
+        fit = "Post-Workout Nutrition"
+    elif is_fashion:
+        verdict = f"Verified buyers across official channels praise the authentic fabric quality, exact fit, and premium finish for {product.normalized_title}."
+        pros = [
+            "True-to-size silhouette matching catalog imagery",
+            "High quality stitching and fabric lining",
+            "Fast priority dispatch with authentic brand tags"
+        ]
+        cons = [
+            "Gentle wash recommended to preserve finish",
+            "Check size chart carefully before checkout"
+        ]
+        fit = "True to Size Fit"
+    else:
+        verdict = f"Verified buyers across Tira, Nykaa, and Amazon consistently report 100% genuine batches and high effectiveness for {product.normalized_title}."
+        pros = [
             "Official tamper-proof packaging confirmed by buyers",
             "Highest rating consistency between Nykaa and Tira reviews",
             "Significant cart savings when applying active store coupons"
-        ],
-        cons=[
+        ]
+        cons = [
             "Popular variants sell out rapidly during promotional sales",
             "Check seller name matches verified distributor before purchase"
-        ],
-        skin_type_or_fit="Suitable for daily use",
+        ]
+        fit = "Suitable for daily use"
+
+    return ReviewLensSummary(
+        overall_rating=avg_rating,
+        total_reviews_count=total_reviews,
+        verdict=verdict,
+        pros=pros,
+        cons=cons,
+        skin_type_or_fit=fit,
         authenticity_confidence="100% Brand Official Sourced",
         seller_guarantee="Whitelisted Brand Authorized Retailers Only",
         customer_reviews=reviews

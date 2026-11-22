@@ -141,59 +141,6 @@ def persist_product_offers(clean_input: str, product_data: dict, offers_data: li
     except Exception as e:
         print(f"Notice: Supabase logging async error ({e})")
 
-@app.get("/test-gemini")
-@app.get("/v1/test-gemini")
-@app.get("/api/v1/test-gemini")
-async def test_gemini():
-    results = {}
-    candidate_models = [
-        "gemini-flash-latest",
-        "gemini-3.7-flash",
-        "gemini-3.5-flash",
-        "gemini-flash-lite-latest",
-        "gemini-3.1-flash-lite",
-        "gemini-pro-latest"
-    ]
-    import asyncio
-    import google.generativeai as genai
-    genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
-    for mod in candidate_models:
-        try:
-            m = genai.GenerativeModel(mod)
-            resp = await asyncio.to_thread(m.generate_content, "Say 'OK'")
-            results[mod] = {"status": "success", "text": (resp.text or "").strip()[:30]}
-            break
-        except Exception as e:
-            results[mod] = {"status": "error", "error": str(e)[:150]}
-    return results
-
-@app.get("/test-grounding")
-@app.get("/v1/test-grounding")
-@app.get("/api/v1/test-grounding")
-async def test_grounding():
-    try:
-        import asyncio
-        import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
-        m = genai.GenerativeModel("gemini-3.5-flash", tools="google_search_retrieval")
-        resp = await asyncio.to_thread(m.generate_content, "Search the web: What is the current price of Boult Mustang Muscle smartwatch on Amazon India?")
-        return {"status": "success", "response": resp.text[:250]}
-    except Exception as e:
-        import traceback
-        return {"status": "error", "error": str(e), "trace": traceback.format_exc()}
-
-@app.get("/list-models")
-@app.get("/v1/list-models")
-@app.get("/api/v1/list-models")
-async def list_available_models():
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        return {"status": "success", "models": models}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
 @app.get("/")
 @app.get("/health")
 @app.get("/v1/health")

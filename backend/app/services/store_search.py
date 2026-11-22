@@ -36,6 +36,7 @@ class StoreOffer(BaseModel):
     is_scam_flagged: bool = False
     scam_warning: Optional[str] = None
     authenticity_score: int = 98
+    image_url: Optional[str] = None
 
 KNOWN_CATALOG_BASELINES = {
     "minimalist": {"mrp": 599.0, "floor": 489.0},
@@ -95,6 +96,7 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
     if not clean_query or len(clean_query) < 3:
         clean_query = product.normalized_title.strip()
     clean_query = re.sub(r'\b(buy|online|in|india)\b', '', clean_query, flags=re.I).strip()
+    clean_query = re.sub(r'[\(\)\"\']', '', clean_query)
     clean_query = re.sub(r'\s+', ' ', clean_query)
 
     search_term = f"{product.brand} {clean_query}" if product.brand.lower() not in clean_query.lower() else clean_query
@@ -155,7 +157,7 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
                 "name": "Croma",
                 "seller": "Infiniti Retail Ltd (Tata Croma)",
                 "authenticity": "Tata Authorized Electronics Retailer",
-                "url": f"https://www.croma.com/searchB?q={encoded_q}",
+                "url": f"https://www.croma.com/search/?text={encoded_q}",
                 "discount_range": (0.08, 0.18),
                 "rating_range": (4.2, 4.5),
                 "review_count_range": (3200, 8900)
@@ -291,7 +293,10 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
         ]
 
     # 1. Check Gemini Live Grounded Search if GEMINI_API_KEY is configured
-    gemini_data = await search_exact_products_with_gemini(product.brand, product.product_name)
+    target_store_names = [s["name"] for s in store_profiles]
+    gemini_data = await search_exact_products_with_gemini(
+        product.brand, product.product_name, target_stores=target_store_names, category=product.category
+    )
 
     is_verified_catalog = any(k in f"{product.brand} {product.product_name}".lower() for k in KNOWN_CATALOG_BASELINES)
 
@@ -299,7 +304,11 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
     
     for s in store_profiles:
         store_key = s["name"]
-        g_match = gemini_data.get(store_key) or gemini_data.get(store_key.lower())
+        g_match = None
+        for k, v in gemini_data.items():
+            if k.lower() in store_key.lower() or store_key.lower() in k.lower():
+                g_match = v
+                break
 
         # If Gemini verified that this brand is NOT sold on this store, skip it
         if g_match and g_match.get("available") is False:
@@ -368,8 +377,15 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
         total_savings = float(base_mrp - final_price)
         total_disc_pct = int(round((total_savings / base_mrp) * 100))
 
-        dest_url = g_match.get("direct_url") if (g_match and g_match.get("direct_url")) else s["url"]
+        dest_url = g_match.get("direct_url") if (g_match and g_match.get("direct_url") and "http" in str(g_match.get("direct_url"))) else s["url"]
         affiliate_url = affiliate_router.wrap_affiliate_url(s["name"], dest_url)
+
+        # Store-specific product photo
+        offer_img = None
+        if g_match and g_match.get("image_url") and "http" in str(g_match.get("image_url")):
+            offer_img = g_match["image_url"]
+        elif product.thumbnail_url:
+            offer_img = product.thumbnail_url
 
         # Anti-scam verification:
         # Check seller name and reputation. Certified brand partners get 99% score.
@@ -409,7 +425,8 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
             savings_vs_mrp=total_savings,
             is_scam_flagged=is_scam,
             scam_warning=warning,
-            authenticity_score=auth_score
+            authenticity_score=auth_score,
+            image_url=offer_img
         )
         offers.append(offer)
 

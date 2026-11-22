@@ -29,44 +29,6 @@ import {
   Zap,
 } from "lucide-react";
 
-const LIVE_SLASH_NOTIFICATIONS = [
-  {
-    name: "NEWME Polka Dot Tube Top",
-    description: "Slashed from ₹999 to ₹799 on NEWME Direct (Saved ₹200! 🎀)",
-    time: "Just now",
-    icon: "🎀",
-    color: "#EC4899",
-  },
-  {
-    name: "GOBOULT Mustang Smart Watch",
-    description: "Slashed from ₹4,999 to ₹1,499 on Amazon (Saved ₹3,500 ⚡)",
-    time: "1m ago",
-    icon: "⚡",
-    color: "#F59E0B",
-  },
-  {
-    name: "MuscleBlaze Biozyme Whey 1kg",
-    description: "Slashed from ₹2,499 to ₹1,899 on Amazon (Saved ₹600 🏋️)",
-    time: "2m ago",
-    icon: "🏋️",
-    color: "#10B981",
-  },
-  {
-    name: "Minimalist Niacinamide 10%",
-    description: "Slashed to ₹489 on Tira (Secret code TIRA20 applied 🔥)",
-    time: "5m ago",
-    icon: "🧴",
-    color: "#3B82F6",
-  },
-  {
-    name: "Philips Series 1000 Trimmer",
-    description: "Slashed from ₹1,195 to ₹799 on Amazon (Clean cut ✂️)",
-    time: "8m ago",
-    icon: "⚡",
-    color: "#F59E0B",
-  },
-];
-
 const UNISEX_TRENDING_ITEMS: TrendingItem[] = [
   {
     title: "NEWME White Polka Dot Tube Top",
@@ -654,28 +616,47 @@ export default function HomePage() {
               </div>
 
               <AnimatedList delay={1400} className="w-full">
-                {LIVE_SLASH_NOTIFICATIONS.map((item, idx) => (
-                  <figure
-                    key={idx}
-                    className="relative w-full cursor-pointer overflow-hidden rounded-xl p-3 transition-all duration-150 hover:bg-zinc-100/70 bg-zinc-50 border border-zinc-200/80 shadow-xs flex items-center gap-3"
-                  >
-                    <div
-                      className="flex size-9 items-center justify-center rounded-xl font-bold text-base shrink-0"
-                      style={{ backgroundColor: `${item.color}15`, color: item.color }}
+                {trendingItems.map((item, idx) => {
+                  const times = ["Just now", "2m ago", "4m ago", "6m ago", "9m ago", "12m ago", "15m ago", "18m ago"];
+                  const icons = ["🎀", "⚡", "🧴", "✂️", "🏋️", "💅", "🧪", "🩺"];
+                  const colors = ["#EC4899", "#F59E0B", "#3B82F6", "#F59E0B", "#10B981", "#EC4899", "#8B5CF6", "#10B981"];
+                  const icon = icons[idx % icons.length];
+                  const color = colors[idx % colors.length];
+                  const time = times[idx % times.length];
+
+                  return (
+                    <figure
+                      key={item.title}
+                      onClick={() => handleSearch(item.sample_query)}
+                      className="relative w-full cursor-pointer overflow-hidden rounded-xl p-3 transition-all duration-200 hover:bg-emerald-50/50 hover:border-emerald-300 hover:shadow-md bg-zinc-50 border border-zinc-200/80 shadow-xs flex items-center gap-3 active:scale-[0.98] group"
                     >
-                      {item.icon}
-                    </div>
-                    <div className="flex flex-col overflow-hidden text-left w-full min-w-0">
-                      <figcaption className="flex flex-row items-center justify-between text-xs font-black text-zinc-900">
-                        <span className="truncate">{item.name}</span>
-                        <span className="text-[10px] text-zinc-400 font-normal shrink-0 ml-1">{item.time}</span>
-                      </figcaption>
-                      <p className="text-[11px] font-semibold text-emerald-700 truncate mt-0.5">
-                        {item.description}
-                      </p>
-                    </div>
-                  </figure>
-                ))}
+                      <div
+                        className="flex size-9 items-center justify-center rounded-xl font-bold text-base shrink-0 group-hover:scale-110 transition-transform"
+                        style={{ backgroundColor: `${color}15`, color }}
+                      >
+                        {icon}
+                      </div>
+                      <div className="flex flex-col overflow-hidden text-left w-full min-w-0">
+                        <figcaption className="flex flex-row items-center justify-between text-xs font-black text-zinc-900">
+                          <span className="truncate group-hover:text-emerald-700 transition-colors">
+                            {item.title}
+                          </span>
+                          <span className="text-[10px] text-zinc-400 font-normal shrink-0 ml-1">
+                            {time}
+                          </span>
+                        </figcaption>
+                        <div className="flex items-center justify-between gap-1 mt-0.5">
+                          <p className="text-[11px] font-semibold text-emerald-700 truncate">
+                            Slashed from ₹{item.mrp} to ₹{item.best_price} on {item.best_store} (Saved ₹{item.savings}! 🔥)
+                          </p>
+                          <span className="text-[9px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded shrink-0 opacity-80 group-hover:opacity-100 flex items-center gap-0.5">
+                            View Deal ↗
+                          </span>
+                        </div>
+                      </div>
+                    </figure>
+                  );
+                })}
               </AnimatedList>
             </div>
           </div>

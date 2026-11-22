@@ -35,6 +35,7 @@ export interface StoreOffer {
   is_scam_flagged?: boolean;
   scam_warning?: string;
   authenticity_score?: number;
+  image_url?: string;
 }
 
 export interface StoreCustomerReview {

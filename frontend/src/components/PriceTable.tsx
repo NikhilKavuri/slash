@@ -22,6 +22,7 @@ import {
 import { BorderBeam } from "./magicui/border-beam";
 import { motion } from "framer-motion";
 import { useSnackbar } from "./Snackbar";
+import { ImageWithFallback } from "./ImageWithFallback";
 
 interface PriceTableProps {
   offers: StoreOffer[];
@@ -168,6 +169,20 @@ export function PriceTable({ offers, bestOffer, fastestOffer }: PriceTableProps)
                     ) : null}
                   </div>
 
+                  {/* Store Product Listing Photo */}
+                  <div className="aspect-[4/3] w-full rounded-xl bg-zinc-50 border border-zinc-100 overflow-hidden relative flex items-center justify-center">
+                    <ImageWithFallback
+                      src={offer.image_url}
+                      alt={`${offer.store_name} - ${offer.seller_name}`}
+                      category={offer.store_name}
+                      brand={offer.store_name}
+                      className="w-full h-full object-contain p-2 hover:scale-105 transition-transform duration-200"
+                    />
+                    <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-white/90 text-zinc-800 border border-zinc-200/60 shadow-2xs">
+                      {offer.store_name} Photo
+                    </div>
+                  </div>
+
                   {/* Price Breakdown with Final Checkout Steal */}
                   <div className="pt-2 border-t border-zinc-100 space-y-1">
                     <div className="flex items-baseline gap-1.5 flex-wrap">
@@ -290,6 +305,17 @@ export function PriceTable({ offers, bestOffer, fastestOffer }: PriceTableProps)
               >
                 {/* Left/Middle: Store info & badges */}
                 <div className="flex items-start gap-3 min-w-0 flex-1">
+                  {/* Store Product Listing Photo in List View */}
+                  <div className="w-14 h-14 rounded-xl bg-zinc-50 border border-zinc-200/80 overflow-hidden relative shrink-0 flex items-center justify-center">
+                    <ImageWithFallback
+                      src={offer.image_url}
+                      alt={`${offer.store_name} - ${offer.seller_name}`}
+                      category={offer.store_name}
+                      brand={offer.store_name}
+                      className="w-full h-full object-contain p-1"
+                    />
+                  </div>
+
                   <div
                     className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs ${theme.bg} ${theme.text} ${theme.border} border shrink-0 mt-0.5`}
                   >

@@ -169,6 +169,18 @@ async def test_grounding():
         import traceback
         return {"status": "error", "error": str(e), "trace": traceback.format_exc()}
 
+@app.get("/list-models")
+@app.get("/v1/list-models")
+@app.get("/api/v1/list-models")
+async def list_available_models():
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        return {"status": "success", "models": models}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
 @app.get("/")
 @app.get("/health")
 @app.get("/v1/health")
@@ -183,25 +195,10 @@ async def health_check():
     except Exception:
         p_count = 0
 
-    gemini_status = "not_configured"
-    gemini_error = None
-    try:
-        if settings.GEMINI_API_KEY:
-            import google.generativeai as genai
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            m = genai.GenerativeModel("gemini-3.8-flash")
-            resp = await m.generate_content_async("ping")
-            gemini_status = "ok: " + (resp.text or "").strip()[:20]
-    except Exception as ge:
-        gemini_status = "error"
-        gemini_error = str(ge)
-
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
         "gemini_configured": bool(settings.GEMINI_API_KEY),
-        "gemini_live": gemini_status,
-        "gemini_error": gemini_error,
         "database_connected": db_connected,
         "tracked_products": p_count,
         "timestamp": time.time()

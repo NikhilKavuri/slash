@@ -218,9 +218,26 @@ Return ONLY raw JSON, starting with {{ and ending with }}.
                     cand = response.candidates[0]
                     if hasattr(cand, "content") and hasattr(cand.content, "parts"):
                         text = "".join(getattr(part, "text", "") for part in cand.content.parts)
-        except Exception as gen_err:
-            logger.warning(f"Gemini generate failed ({gen_err})")
-            return {}
+        except Exception as tool_err:
+            logger.warning(f"Google Search grounded generate failed ({tool_err}), falling back to direct LLM intelligence...")
+            try:
+                fallback_model = genai.GenerativeModel(model_name="gemini-flash-latest")
+                response = await asyncio.to_thread(
+                    fallback_model.generate_content,
+                    prompt,
+                    generation_config={"response_mime_type": "application/json"},
+                    request_options={"timeout": 6.0, "retry": None}
+                )
+                try:
+                    text = response.text
+                except Exception:
+                    if hasattr(response, "candidates") and response.candidates:
+                        cand = response.candidates[0]
+                        if hasattr(cand, "content") and hasattr(cand.content, "parts"):
+                            text = "".join(getattr(part, "text", "") for part in cand.content.parts)
+            except Exception as fb_err:
+                logger.warning(f"Fallback Gemini generate also failed ({fb_err})")
+                return {}
         
         data = _extract_json_from_text(text)
         if not data:

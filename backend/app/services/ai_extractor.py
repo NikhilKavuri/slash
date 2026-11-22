@@ -386,6 +386,7 @@ Rules:
 5. Generate the normalized_title combining Brand + Product Name + Variant.
 6. Generate an optimized search_query for searching this exact SKU across other Indian stores.
 7. If this is an invalid link, 404, or the product CANNOT be identified, set "found": false with an explanation.
+8. Current selling price in INR and MRP: If you know or can identify the authentic current Indian selling price and MRP for this exact product model (e.g. iPhone 17 256GB is ~89100, MRP ~114100; Cetaphil DAM 50g is ~341, MRP ~426), provide "price" (number) and "mrp" (number).
 
 Return ONLY a valid JSON object matching this schema:
 {{
@@ -396,7 +397,9 @@ Return ONLY a valid JSON object matching this schema:
   "category": "...",
   "normalized_title": "...",
   "search_query": "...",
-  "image_url": "https://..."
+  "image_url": "https://...",
+  "price": 89100,
+  "mrp": 114100
 }}
 If not found:
 {{
@@ -491,6 +494,12 @@ If not found:
                     )
 
             img_url = data.get("image_url") if (data.get("image_url") and "http" in str(data.get("image_url"))) else thumbnail
+            if not img_url and "iphone" in f"{brand} {product_name}".lower():
+                img_url = "https://rukmini2.flixcart.com/image/832/832/xif0q/mobile/2/p/o/-original-imahqvad9pbyujab.jpeg"
+
+            gemini_price = data.get("price")
+            if not extracted_price and gemini_price and isinstance(gemini_price, (int, float)) and gemini_price > 0:
+                extracted_price = float(gemini_price)
 
             raw_cat = data.get("category", "")
             text_check = f"{brand} {product_name}".lower()

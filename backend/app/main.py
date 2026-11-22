@@ -56,7 +56,7 @@ class CompareResponse(BaseModel):
     cached: bool = False
     processing_time_ms: float
 
-def generate_mock_price_history(best_price: float, mrp: float) -> List[PriceHistoryPoint]:
+def generate_mock_price_history(best_price: float, mrp: float, primary_store: str = "Store") -> List[PriceHistoryPoint]:
     """Generate 30-day realistic price history points when fewer than 2 DB points exist."""
     points = []
     days_ago = [30, 21, 14, 7, 3, 0]
@@ -66,30 +66,36 @@ def generate_mock_price_history(best_price: float, mrp: float) -> List[PriceHist
         points.append(PriceHistoryPoint(
             date=f"{d}d ago" if d > 0 else "Today",
             price=float(min(p, mrp)),
-            store="Tira" if p <= best_price else "Nykaa"
+            store=primary_store
         ))
     return points
 
-def fetch_price_history_points(slug: str, best_price: float, mrp: float) -> List[PriceHistoryPoint]:
+def fetch_price_history_points(slug: str, best_price: float, mrp: float, primary_store: str = "Store") -> List[PriceHistoryPoint]:
     """Retrieve actual historical price points from Supabase PostgreSQL if available."""
     try:
         db = SessionLocal()
         db_product = db.query(ProductModel).filter(ProductModel.slug == slug).first()
         if db_product and db_product.price_history and len(db_product.price_history) >= 2:
-            sorted_history = sorted(db_product.price_history, key=lambda x: x.recorded_at)
-            points = []
-            for item in sorted_history[-10:]:
-                points.append(PriceHistoryPoint(
-                    date=item.recorded_at.strftime("%d %b"),
-                    price=item.price,
-                    store=item.store_name
-                ))
-            db.close()
-            return points
+            # Check for corrupted legacy points (e.g. ₹341 on expensive items)
+            is_corrupted = any(
+                p.price < 2000 for p in db_product.price_history
+                if ("apple" in slug or "iphone" in slug or "laptop" in slug)
+            )
+            if not is_corrupted:
+                sorted_history = sorted(db_product.price_history, key=lambda x: x.recorded_at)
+                points = []
+                for item in sorted_history[-10:]:
+                    points.append(PriceHistoryPoint(
+                        date=item.recorded_at.strftime("%d %b"),
+                        price=item.price,
+                        store=item.store_name
+                    ))
+                db.close()
+                return points
         db.close()
     except Exception as e:
         print(f"Notice: Supabase price history read skipped ({e})")
-    return generate_mock_price_history(best_price, mrp)
+    return generate_mock_price_history(best_price, mrp, primary_store)
 
 def persist_product_offers(clean_input: str, product_data: dict, offers_data: list):
     """Background worker: Persist tracked product and prices into Supabase PostgreSQL."""
@@ -130,11 +136,17 @@ def persist_product_offers(clean_input: str, product_data: dict, offers_data: li
                 db_product.thumbnail_url = best_img
             db.commit()
 
+        is_elec = product_data.get("category") == "Electronics & Gadgets" or "apple" in brand.lower()
         for off in offers_data:
+            off_p = float(off.get("price", 0.0))
+            if is_elec and off_p < 2000.0:
+                continue
+            if off_p <= 0.0:
+                continue
             db.add(PricePointModel(
                 product_id=db_product.id,
                 store_name=off.get("store_name", "Store"),
-                price=float(off.get("price", 0.0)),
+                price=off_p,
                 recorded_at=now
             ))
         db.commit()
@@ -213,7 +225,7 @@ async def compare_product(req: CompareRequest, background_tasks: BackgroundTasks
     prod_title = getattr(product, "normalized_title", None) or getattr(product, "product_name", "Product")
     slug_raw = f"{product.brand}-{prod_title}"
     slug = re.sub(r'[^a-zA-Z0-9]+', '-', slug_raw.lower()).strip('-')[:100]
-    price_history = fetch_price_history_points(slug, best_offer.price, best_offer.mrp)
+    price_history = fetch_price_history_points(slug, best_offer.price, best_offer.mrp, best_offer.store_name)
 
     result = {
         "product": product.model_dump(),

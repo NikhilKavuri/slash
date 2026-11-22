@@ -29,9 +29,13 @@ class ReviewLensSummary(BaseModel):
     scam_filter_status: str = "Passed — Zero scam or counterfeit reports detected across verified sellers"
     customer_reviews: List[StoreCustomerReview] = Field(default_factory=list)
 
-def get_fallback_customer_reviews(product: NormalizedProduct) -> List[StoreCustomerReview]:
-    cat = product.category.lower()
-    text = f"{product.brand} {product.product_name}".lower()
+def get_fallback_customer_reviews(product: Any) -> List[StoreCustomerReview]:
+    if isinstance(product, str):
+        cat = ""
+        text = product.lower()
+    else:
+        cat = getattr(product, "category", "").lower()
+        text = f"{getattr(product, 'brand', '')} {getattr(product, 'product_name', '')} {getattr(product, 'normalized_title', '')}".lower()
 
     if "electronic" in cat or "wearable" in cat or "watch" in text or "audio" in text or "trimmer" in text:
         return [
@@ -151,7 +155,7 @@ async def generate_review_summary(product: NormalizedProduct, offers: List[Any])
     total_reviews = sum(getattr(o, "review_count", 2500) for o in offers)
     avg_rating = round(sum(getattr(o, "rating", 4.3) for o in offers) / max(len(offers), 1), 1)
 
-    reviews = get_fallback_customer_reviews(product.normalized_title)
+    reviews = get_fallback_customer_reviews(product)
 
     prompt = f"""
 You are ReviewLens AI.

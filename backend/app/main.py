@@ -145,16 +145,27 @@ def persist_product_offers(clean_input: str, product_data: dict, offers_data: li
 @app.get("/v1/test-gemini")
 @app.get("/api/v1/test-gemini")
 async def test_gemini():
-    try:
-        import asyncio
-        import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
-        m = genai.GenerativeModel("gemini-2.5-flash")
-        resp = await asyncio.to_thread(m.generate_content, "Hello, reply with 'PONG'")
-        return {"status": "success", "response": resp.text}
-    except Exception as e:
-        import traceback
-        return {"status": "error", "error": str(e), "trace": traceback.format_exc()}
+    results = {}
+    candidate_models = [
+        "gemini-flash-latest",
+        "gemini-3.7-flash",
+        "gemini-3.5-flash",
+        "gemini-flash-lite-latest",
+        "gemini-3.1-flash-lite",
+        "gemini-pro-latest"
+    ]
+    import asyncio
+    import google.generativeai as genai
+    genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
+    for mod in candidate_models:
+        try:
+            m = genai.GenerativeModel(mod)
+            resp = await asyncio.to_thread(m.generate_content, "Say 'OK'")
+            results[mod] = {"status": "success", "text": (resp.text or "").strip()[:30]}
+            break
+        except Exception as e:
+            results[mod] = {"status": "error", "error": str(e)[:150]}
+    return results
 
 @app.get("/test-grounding")
 @app.get("/v1/test-grounding")

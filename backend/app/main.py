@@ -141,24 +141,28 @@ def persist_product_offers(clean_input: str, product_data: dict, offers_data: li
     except Exception as e:
         print(f"Notice: Supabase logging async error ({e})")
 
+@app.get("/test-gemini")
+@app.get("/v1/test-gemini")
 @app.get("/api/v1/test-gemini")
 async def test_gemini():
     try:
         import google.generativeai as genai
         genai.configure(api_key=settings.GEMINI_API_KEY)
-        m = genai.GenerativeModel("gemini-2.0-flash")
+        m = genai.GenerativeModel("gemini-3.8-flash")
         resp = await m.generate_content_async("Hello, return 'OK'")
         return {"status": "success", "response": resp.text}
     except Exception as e:
         import traceback
         return {"status": "error", "error": str(e), "trace": traceback.format_exc()}
 
+@app.get("/test-grounding")
+@app.get("/v1/test-grounding")
 @app.get("/api/v1/test-grounding")
 async def test_grounding():
     try:
         import google.generativeai as genai
         genai.configure(api_key=settings.GEMINI_API_KEY)
-        m = genai.GenerativeModel("gemini-2.0-flash", tools="google_search_retrieval")
+        m = genai.GenerativeModel("gemini-3.8-flash", tools="google_search_retrieval")
         resp = await m.generate_content_async("What is the price of Boult Mustang Muscle smartwatch on Amazon India?")
         return {"status": "success", "response": resp.text}
     except Exception as e:
@@ -185,7 +189,7 @@ async def health_check():
         if settings.GEMINI_API_KEY:
             import google.generativeai as genai
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            m = genai.GenerativeModel("gemini-2.0-flash")
+            m = genai.GenerativeModel("gemini-3.8-flash")
             resp = await m.generate_content_async("ping")
             gemini_status = "ok: " + (resp.text or "").strip()[:20]
     except Exception as ge:

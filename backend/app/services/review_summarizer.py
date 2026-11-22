@@ -179,7 +179,7 @@ Return JSON:
         try:
             import google.generativeai as genai
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-3.8-flash")
             response = await model.generate_content_async(
                 prompt,
                 generation_config={"response_mime_type": "application/json"}

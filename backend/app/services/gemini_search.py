@@ -124,12 +124,12 @@ async def search_exact_products_with_gemini(
         genai.configure(api_key=settings.GEMINI_API_KEY)
         try:
             model = genai.GenerativeModel(
-                model_name="gemini-2.0-flash",
+                model_name="gemini-3.8-flash",
                 tools="google_search_retrieval"
             )
         except Exception as tool_init_err:
-            logger.warning(f"tools='google_search_retrieval' init failed: {tool_init_err}. Using standard gemini-2.0-flash.")
-            model = genai.GenerativeModel(model_name="gemini-2.0-flash")
+            logger.warning(f"tools='google_search_retrieval' init failed: {tool_init_err}. Using standard gemini-3.8-flash.")
+            model = genai.GenerativeModel(model_name="gemini-3.8-flash")
 
         if target_stores and len(target_stores) > 0:
             stores_formatted = "\n".join([f"- {s}" for s in target_stores])
@@ -213,7 +213,7 @@ IMPORTANT: It is MUCH better to return "available": false than to return a wrong
                         text = "".join(getattr(part, "text", "") for part in cand.content.parts)
         except Exception as gen_err:
             logger.warning(f"Gemini generate with tools failed ({gen_err}). Falling back to standard model...")
-            fallback_model = genai.GenerativeModel(model_name="gemini-2.0-flash")
+            fallback_model = genai.GenerativeModel(model_name="gemini-3.8-flash")
             response = await fallback_model.generate_content_async(prompt)
             try:
                 text = response.text

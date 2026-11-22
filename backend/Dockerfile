@@ -1,0 +1,18 @@
+FROM mcr.microsoft.com/playwright/python:v1.49.0-noble
+
+WORKDIR /app
+
+# Install python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy backend source code
+COPY . .
+
+# Set environment
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
+EXPOSE 8000
+
+# Start FastAPI application
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]

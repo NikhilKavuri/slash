@@ -96,7 +96,7 @@ export interface TrendingItem {
   image: string;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://slash-backend-seven.vercel.app/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://slash-backend-jl9j.onrender.com/api/v1";
 
 export async function compareProduct(queryOrUrl: string): Promise<CompareResult> {
   const res = await fetch(`${API_BASE}/compare`, {

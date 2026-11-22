@@ -158,18 +158,9 @@ async def diag_gemini():
     try:
         import google.generativeai as genai
         genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
-        available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Test the first flash model
-        test_model = "gemini-1.5-flash"
-        for candidate in ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"]:
-            if any(candidate in a for a in available):
-                test_model = candidate
-                break
-                
-        model = genai.GenerativeModel(test_model)
+        model = genai.GenerativeModel("gemini-3.8-flash")
         resp = await asyncio.to_thread(model.generate_content, "Say OK in JSON: {\"status\": \"ok\"}")
-        return {"ms": round((time.time() - t0) * 1000, 1), "chosen": test_model, "text": resp.text, "available": available[:10]}
+        return {"ms": round((time.time() - t0) * 1000, 1), "chosen": "gemini-3.8-flash", "text": resp.text}
     except Exception as e:
         return {"error": str(e), "trace": traceback.format_exc()}
 

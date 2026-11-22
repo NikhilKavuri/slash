@@ -174,9 +174,12 @@ async def health_check():
         "gemini_configured": bool(settings.GEMINI_API_KEY),
         "database_connected": db_connected,
         "tracked_products": p_count,
+        "build_version": "v3-browser-scraper",
         "timestamp": time.time()
     }
 
+@app.get("/test-scrape")
+@app.get("/v1/test-scrape")
 @app.get("/api/v1/test-scrape")
 async def test_scrape(q: str = "Philips BT1232 Trimmer"):
     from app.services.browser_scraper import search_single_store

@@ -174,11 +174,10 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
         category=product.category
     )
     
-    if not gemini_data:
-        logger.warning(f"Gemini returned no data for '{product.brand} {product.product_name}'")
-        return []
-    
     offers: List[StoreOffer] = []
+    if not gemini_data:
+        logger.info(f"Gemini returned no live data for '{product.brand} {product.product_name}'")
+        gemini_data = {}
     
     for raw_store_name, store_data in gemini_data.items():
         # Skip stores marked unavailable

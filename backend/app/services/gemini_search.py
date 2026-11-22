@@ -121,19 +121,15 @@ async def search_exact_products_with_gemini(
         return {}
 
     try:
-        from google.generativeai import protos
         genai.configure(api_key=settings.GEMINI_API_KEY)
-        use_search_tool = True
         try:
-            search_tool = protos.Tool(google_search=protos.Tool.GoogleSearch())
             model = genai.GenerativeModel(
                 model_name="gemini-2.0-flash",
-                tools=[search_tool]
+                tools="google_search_retrieval"
             )
         except Exception as tool_init_err:
-            logger.warning(f"protos.Tool GoogleSearch init failed: {tool_init_err}. Using standard gemini-2.0-flash.")
+            logger.warning(f"tools='google_search_retrieval' init failed: {tool_init_err}. Using standard gemini-2.0-flash.")
             model = genai.GenerativeModel(model_name="gemini-2.0-flash")
-            use_search_tool = False
 
         if target_stores and len(target_stores) > 0:
             stores_formatted = "\n".join([f"- {s}" for s in target_stores])
@@ -205,14 +201,27 @@ Return ONLY a valid JSON object:
 
 IMPORTANT: It is MUCH better to return "available": false than to return a wrong URL, wrong product, or guessed price. Quality over quantity.
 """
+        text = ""
         try:
             response = await model.generate_content_async(prompt)
-            text = response.text
+            try:
+                text = response.text
+            except Exception:
+                if hasattr(response, "candidates") and response.candidates:
+                    cand = response.candidates[0]
+                    if hasattr(cand, "content") and hasattr(cand.content, "parts"):
+                        text = "".join(getattr(part, "text", "") for part in cand.content.parts)
         except Exception as gen_err:
             logger.warning(f"Gemini generate with tools failed ({gen_err}). Falling back to standard model...")
             fallback_model = genai.GenerativeModel(model_name="gemini-2.0-flash")
             response = await fallback_model.generate_content_async(prompt)
-            text = response.text
+            try:
+                text = response.text
+            except Exception:
+                if hasattr(response, "candidates") and response.candidates:
+                    cand = response.candidates[0]
+                    if hasattr(cand, "content") and hasattr(cand.content, "parts"):
+                        text = "".join(getattr(part, "text", "") for part in cand.content.parts)
         
         data = _extract_json_from_text(text)
         if not data:

@@ -177,6 +177,38 @@ async def health_check():
         "timestamp": time.time()
     }
 
+@app.get("/api/v1/test-gemini-grounding")
+async def test_gemini_grounding(q: str = "Philips BT1232 Trimmer price on Amazon India"):
+    import google.generativeai as genai
+    genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
+    results = {}
+    
+    # Attempt 1: tools='google_search_retrieval'
+    try:
+        m1 = genai.GenerativeModel("gemini-1.5-flash", tools="google_search_retrieval")
+        r1 = await asyncio.to_thread(m1.generate_content, q)
+        results["tools_string"] = {"success": True, "text": r1.text[:200]}
+    except Exception as e:
+        results["tools_string"] = {"success": False, "error": str(e)}
+
+    # Attempt 2: tools=[{"google_search_retrieval": {}}]
+    try:
+        m2 = genai.GenerativeModel("gemini-1.5-flash", tools=[{"google_search_retrieval": {}}])
+        r2 = await asyncio.to_thread(m2.generate_content, q)
+        results["tools_dict"] = {"success": True, "text": r2.text[:200]}
+    except Exception as e:
+        results["tools_dict"] = {"success": False, "error": str(e)}
+
+    # Attempt 3: gemini-1.5-pro with tools
+    try:
+        m3 = genai.GenerativeModel("gemini-1.5-pro", tools=[{"google_search_retrieval": {}}])
+        r3 = await asyncio.to_thread(m3.generate_content, q)
+        results["pro_tools_dict"] = {"success": True, "text": r3.text[:200]}
+    except Exception as e:
+        results["pro_tools_dict"] = {"success": False, "error": str(e)}
+
+    return results
+
 @app.post("/compare", response_model=CompareResponse)
 @app.post("/v1/compare", response_model=CompareResponse)
 @app.post("/api/v1/compare", response_model=CompareResponse)

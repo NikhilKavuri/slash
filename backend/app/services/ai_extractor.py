@@ -151,7 +151,7 @@ async def extract_url_metadata(url: str) -> Dict[str, Any]:
     }
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as client:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=3.0) as client:
             resp = await client.get(url, headers=headers)
             final_url = str(resp.url)
             metadata["final_url"] = final_url
@@ -330,7 +330,8 @@ If not found:
             response = await asyncio.to_thread(
                 model.generate_content,
                 prompt,
-                generation_config={"response_mime_type": "application/json"}
+                generation_config={"response_mime_type": "application/json"},
+                request_options={"timeout": 4.0, "retry": None}
             )
             
             resp_text = ""

@@ -154,14 +154,19 @@ async def diag_scrape(url: str = "https://blinkit.com/prn/x/prid/764770"):
 @app.get("/api/v1/diag/gemini")
 async def diag_gemini():
     import traceback
+    t0 = time.time()
     try:
         import google.generativeai as genai
         genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
         m = genai.GenerativeModel("gemini-flash-latest")
-        resp = await asyncio.to_thread(m.generate_content, "Say PONG")
-        return {"status": "ok", "model": "gemini-flash-latest", "reply": resp.text}
+        resp = await asyncio.to_thread(
+            m.generate_content,
+            "Say PONG",
+            request_options={"timeout": 4.0, "retry": None}
+        )
+        return {"status": "ok", "ms": round((time.time() - t0) * 1000, 1), "model": "gemini-flash-latest", "reply": resp.text}
     except Exception as e:
-        return {"error": str(e), "trace": traceback.format_exc()}
+        return {"status": "error", "ms": round((time.time() - t0) * 1000, 1), "error": str(e), "trace": traceback.format_exc()}
 
 @app.get("/diag")
 @app.get("/v1/diag")

@@ -200,7 +200,8 @@ IMPORTANT: It is MUCH better to return "available": false than to return a wrong
             response = await asyncio.to_thread(
                 model.generate_content,
                 prompt,
-                generation_config={"response_mime_type": "application/json"}
+                generation_config={"response_mime_type": "application/json"},
+                request_options={"timeout": 4.0, "retry": None}
             )
             try:
                 text = response.text

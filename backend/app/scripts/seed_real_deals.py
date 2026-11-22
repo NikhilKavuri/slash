@@ -12,7 +12,7 @@ REAL_CATALOG = [
         "title": "NEWME White Polka Dot Tube Top",
         "category": "Fashion & Apparel",
         "search_query": "https://newme.asia/product/white-polka-dot-tube-top-4",
-        "thumbnail_url": "https://assets.newme.asia/wp-content/uploads/2026/07/17121641c5cf1266/NM-PRC-445-BLS-26-JUL-35660-WHITE(1).webp",
+        "thumbnail_url": "https://assets.newme.asia/wp-content/uploads/2026/07/17121641c5cf1266/NM-PRC-445-BLS-26-JUL-35660-WHITE(1)-650x975.webp",
         "stores": [
             {"store_name": "NEWME", "price": 799.0}
         ]
@@ -22,11 +22,10 @@ REAL_CATALOG = [
         "title": "GOBOULT Mustang Muscle Smart Watch (2.01\" Curved HD Display)",
         "category": "Electronics & Wearables",
         "search_query": "https://www.amazon.in/dp/B0GYYM57FP",
-        "thumbnail_url": "https://m.media-amazon.com/images/I/61SSVxTSs3L._SL1500_.jpg",
+        "thumbnail_url": "https://goboult.co.in/cdn/shop/files/Res_Artboard6_48e29684-c770-492d-a59c-ac94374c4a59.webp",
         "stores": [
             {"store_name": "Amazon", "price": 1499.0},
-            {"store_name": "Flipkart", "price": 1599.0},
-            {"store_name": "Boult Audio", "price": 1699.0}
+            {"store_name": "Boult Audio", "price": 2999.0}
         ]
     },
     {

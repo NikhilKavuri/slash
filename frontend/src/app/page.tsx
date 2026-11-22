@@ -41,7 +41,7 @@ const UNISEX_TRENDING_ITEMS: TrendingItem[] = [
     fastest_store: "NEWME Direct",
     savings: 200,
     sample_query: "https://newme.asia/product/white-polka-dot-tube-top-4",
-    image: "https://assets.newme.asia/wp-content/uploads/2026/07/17121641c5cf1266/NM-PRC-445-BLS-26-JUL-35660-WHITE(1).webp",
+    image: "https://assets.newme.asia/wp-content/uploads/2026/07/17121641c5cf1266/NM-PRC-445-BLS-26-JUL-35660-WHITE(1)-650x975.webp",
   },
   {
     title: "GOBOULT Mustang Muscle Smart Watch (2.01\" Curved HD Display)",
@@ -54,7 +54,7 @@ const UNISEX_TRENDING_ITEMS: TrendingItem[] = [
     fastest_store: "Amazon Prime",
     savings: 3500,
     sample_query: "https://www.amazon.in/dp/B0GYYM57FP",
-    image: "https://m.media-amazon.com/images/I/61SSVxTSs3L._SL1500_.jpg",
+    image: "https://goboult.co.in/cdn/shop/files/Res_Artboard6_48e29684-c770-492d-a59c-ac94374c4a59.webp",
   },
   {
     title: "Minimalist 10% Niacinamide Face Serum with Zinc (30ml)",

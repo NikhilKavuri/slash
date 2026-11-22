@@ -182,61 +182,89 @@ async def health_check():
 @app.get("/v1/test-scrape")
 @app.get("/api/v1/test-scrape")
 async def test_scrape(q: str = "Philips BT1232 Trimmer"):
-    from app.services.browser_scraper import fetch_page_html, parse_amazon_search, parse_flipkart_search, parse_croma_search, render_page_with_browser
+    from app.services.browser_scraper import fetch_page_html, parse_flipkart_search, PlaywrightScraper
     from bs4 import BeautifulSoup
     from urllib.parse import quote_plus
     
     clean_q = quote_plus(q)
-    amz_url = f"https://www.amazon.in/s?k={clean_q}"
+    
+    # 1. Test Flipkart
     fk_url = f"https://www.flipkart.com/search?q={clean_q}"
-    cr_url = f"https://www.croma.com/searchB?q={clean_q}%3Arelevance&text={clean_q}"
-    bing_amz_url = f"https://www.bing.com/search?q=site%3Aamazon.in+{clean_q}"
-    
     fk_html = await fetch_page_html(fk_url)
-    cr_html = await fetch_page_html(cr_url)
-    bing_html = await fetch_page_html(bing_amz_url)
+    fk_parsed = parse_flipkart_search(fk_html or "")
     
-    fk_soup = BeautifulSoup(fk_html or "", "html.parser")
-    cr_soup = BeautifulSoup(cr_html or "", "html.parser")
-    bing_soup = BeautifulSoup(bing_html or "", "html.parser")
+    # 2. Test Google India Search for Amazon
+    google_url = f"https://www.google.com/search?q=site%3Aamazon.in+{clean_q}&gl=in&hl=en"
+    google_html = await fetch_page_html(google_url)
+    google_soup = BeautifulSoup(google_html or "", "html.parser")
+    google_links = []
+    for a in google_soup.select("a[href*='amazon.in']"):
+        href = a.get("href", "")
+        if "/dp/" in href or "/gp/" in href:
+            google_links.append({"title": a.text.strip(), "href": href})
     
-    # Inspect Croma links and structure
-    croma_cards = cr_soup.select("[class*='product-wrap'], [class*='plp-srp-newdesign'], [class*='cp-product']")
-    croma_sample = []
-    for c in croma_cards[:3]:
-        croma_sample.append({
-            "classes": c.get("class"),
-            "text": c.text[:150],
-            "links": [a.get("href") for a in c.select("a") if a.get("href")][:3]
-        })
-    
-    # Inspect Bing search results
-    bing_sample = []
-    for it in bing_soup.select("li.b_algo")[:3]:
-        a = it.select_one("h2 a") or it.select_one("a")
-        snippet = it.select_one("p, .b_caption")
-        bing_sample.append({
-            "title": a.text.strip() if a else None,
-            "href": a.get("href") if a else None,
-            "snippet": snippet.text[:150] if snippet else None
-        })
+    # 3. Test Amazon Mobile with Playwright
+    amz_mobile_cards = []
+    try:
+        browser = await PlaywrightScraper.get_browser()
+        if browser:
+            m_ctx = await browser.new_context(
+                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+                viewport={"width": 390, "height": 844},
+                locale="en-IN",
+                timezone_id="Asia/Kolkata"
+            )
+            m_page = await m_ctx.new_page()
+            await m_page.goto(f"https://www.amazon.in/s?k={clean_q}", wait_until="domcontentloaded", timeout=12000)
+            m_html = await m_page.content()
+            m_soup = BeautifulSoup(m_html, "html.parser")
+            for item in m_soup.select("[data-asin]"):
+                asin = item.get("data-asin")
+                if asin and len(asin) == 10:
+                    title_el = item.select_one("h2, span.a-size-small, [class*='title']")
+                    price_el = item.select_one("span.a-price-whole, [class*='price']")
+                    amz_mobile_cards.append({
+                        "asin": asin,
+                        "title": title_el.text.strip() if title_el else None,
+                        "price": price_el.text.strip() if price_el else None,
+                        "url": f"https://www.amazon.in/dp/{asin}"
+                    })
+            await m_page.close()
+            await m_ctx.close()
+    except Exception as e:
+        amz_mobile_cards.append({"error": str(e)})
+
+    # 4. Test Nykaa
+    nykaa_cards = []
+    try:
+        nykaa_url = f"https://www.nykaa.com/search/result/?q={clean_q}"
+        nyk_html = await fetch_page_html(nykaa_url)
+        nyk_soup = BeautifulSoup(nyk_html or "", "html.parser")
+        for a in nyk_soup.select("a[href*='/p/']")[:5]:
+            nykaa_cards.append({
+                "title": a.text.strip()[:100],
+                "href": "https://www.nykaa.com" + a.get("href") if a.get("href").startswith("/") else a.get("href")
+            })
+    except Exception as e:
+        nykaa_cards.append({"error": str(e)})
 
     return {
         "flipkart": {
-            "html_len": len(fk_html or ""),
-            "title": fk_soup.title.string if fk_soup.title else None,
-            "parsed": parse_flipkart_search(fk_html or "")[:2]
+            "count": len(fk_parsed),
+            "top": fk_parsed[:2]
         },
-        "croma": {
-            "html_len": len(cr_html or ""),
-            "title": cr_soup.title.string if cr_soup.title else None,
-            "sample": croma_sample,
-            "parsed": parse_croma_search(cr_html or "")[:2]
+        "google_amazon": {
+            "html_len": len(google_html or ""),
+            "title": google_soup.title.string if google_soup.title else None,
+            "found": google_links[:3]
         },
-        "bing_amazon": {
-            "html_len": len(bing_html or ""),
-            "title": bing_soup.title.string if bing_soup.title else None,
-            "sample": bing_sample
+        "amazon_mobile": {
+            "found_count": len(amz_mobile_cards),
+            "cards": amz_mobile_cards[:3]
+        },
+        "nykaa": {
+            "found_count": len(nykaa_cards),
+            "cards": nykaa_cards[:3]
         }
     }
 

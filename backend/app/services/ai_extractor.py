@@ -603,26 +603,6 @@ If not found:
     else:
         category = "Beauty & Personal Care"
 
-    if not extracted_price:
-        if "iphone 17" in text_lower:
-            extracted_price = 89100.0
-            if not thumbnail:
-                thumbnail = "https://rukminim2.flixcart.com/image/832/832/xif0q/mobile/2/p/o/-original-imahqvad9pbyujab.jpeg"
-        elif "iphone 16" in text_lower:
-            extracted_price = 74900.0
-            if not thumbnail:
-                thumbnail = "https://m.media-amazon.com/images/I/71-D1MmRIPL._SL1500_.jpg"
-        elif "iphone 15" in text_lower:
-            extracted_price = 59900.0
-            if not thumbnail:
-                thumbnail = "https://m.media-amazon.com/images/I/71d7rfSl0wL._SL1500_.jpg"
-        elif "dam" in text_lower and "cetaphil" in text_lower:
-            extracted_price = 341.0
-        elif "niacinamide" in text_lower and "minimalist" in text_lower:
-            extracted_price = 489.0
-        elif "mustang" in text_lower and "boult" in text_lower:
-            extracted_price = 1499.0
-
     normalized_title = f"{brand_guess} {clean_title}" if brand_guess.lower() not in clean_title.lower() else clean_title
 
     return NormalizedProduct(

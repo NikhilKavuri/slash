@@ -69,6 +69,20 @@ REAL_CATALOG = [
         ]
     },
     {
+        "brand": "Cetaphil",
+        "title": "Cetaphil DAM Daily Advance Ultra Hydrating Moisturizing Lotion",
+        "category": "Skincare",
+        "search_query": "https://blinkit.com/prn/x/prid/764770",
+        "thumbnail_url": "https://cdn.grofers.com/da/cms-assets/cms/product/da743535166841c7b4c0251dc854042c.jpeg",
+        "stores": [
+            {"store_name": "Blinkit", "price": 341.0},
+            {"store_name": "Amazon", "price": 385.0},
+            {"store_name": "Nykaa", "price": 396.0},
+            {"store_name": "Tira", "price": 395.0},
+            {"store_name": "Zepto", "price": 341.0}
+        ]
+    },
+    {
         "brand": "MuscleBlaze",
         "title": "MuscleBlaze Biozyme Performance Whey (1kg Rich Chocolate)",
         "category": "Fitness & Nutrition",

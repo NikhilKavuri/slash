@@ -22,8 +22,28 @@ class NormalizedProduct(BaseModel):
     source_store: Optional[str] = Field(default=None, description="Store identified from URL e.g. Tira, Nykaa, Blinkit, Zepto, Amazon")
     thumbnail_url: Optional[str] = Field(default=None, description="Image URL extracted from the page")
     original_url: Optional[str] = Field(default=None, description="Input URL")
+    extracted_price: Optional[float] = Field(default=None, description="Extracted price in INR if directly found on page")
     is_found: bool = Field(default=True, description="Whether the authentic product was successfully identified")
     not_found_reason: Optional[str] = Field(default=None, description="Explanation if product could not be identified")
+
+KNOWN_RETAILERS = {
+    "Amazon", "Flipkart", "Myntra", "Ajio", "Nykaa", "Nykaa Fashion",
+    "Tira", "Blinkit", "Zepto", "Croma", "HealthKart", "Purplle",
+    "Online Store", "Generic"
+}
+
+KNOWN_BRANDS_LIST = [
+    "Cetaphil", "Minimalist", "The Ordinary", "Dot & Key", "Derma Co",
+    "Aqualogica", "Dr. Sheth's", "Plum", "Mamaearth", "L'Oreal",
+    "L'Oreal Paris", "Maybelline", "Maybelline New York", "Laneige",
+    "COSRX", "Innisfree", "Neutrogena", "Simple", "Biotique",
+    "Himalaya", "Nivea", "Vaseline", "Pond's", "Dove",
+    "Boult", "boAt", "Noise", "Fire-Boltt", "Fastrack", "Titan",
+    "Philips", "Havells", "MuscleBlaze", "Optimum Nutrition", "MyProtein",
+    "NEWME", "Urbanic", "Savana", "Snitch", "Souled Store", "Biba",
+    "W", "Aurelia", "Sugar Cosmetics", "Colorbar", "Faces Canada",
+    "Insight Cosmetics", "Swiss Beauty", "Mars", "Kay Beauty"
+]
 
 def detect_store_from_url(url: str) -> str:
     domain = urlparse(url).netloc.lower()
@@ -190,18 +210,35 @@ async def extract_url_metadata(url: str) -> Dict[str, Any]:
         else:
             metadata["title"] = " ".join(words)
 
+    # Extract embedded price if present in title (e.g. "at ₹341 in India" or "Price: ₹341")
+    price_match = re.search(r'₹\s*(\d+(?:\.\d+)?)', metadata["title"]) or re.search(r'at\s*Rs\.?\s*(\d+(?:\.\d+)?)', metadata["title"], re.I)
+    metadata["extracted_price"] = float(price_match.group(1)) if price_match else None
+
+    # Clean promotional and SEO title suffixes
+    clean_title = metadata["title"]
+    clean_title = re.sub(
+        r'\s*(?:Price\s*[-–—:]\s*Buy\s*Online.*|Buy\s*Online.*|at\s*Best\s*Price.*|at\s*₹\s*\d+.*|in\s*India.*)',
+        '',
+        clean_title,
+        flags=re.I
+    ).strip(' -–—:')
+    metadata["clean_title"] = clean_title
+
     return metadata
 
 async def normalize_product_with_gemini(raw_text_or_url: str) -> NormalizedProduct:
-    """Use Gemini Flash with Google Search Grounding to parse raw URL metadata into a standardized, exact product entity."""
+    """Use Gemini Flash to parse raw URL metadata into a standardized, exact product entity."""
     is_url = bool(re.match(r'^https?://', raw_text_or_url.strip()))
     asin = None
+    extracted_price = None
     
     if is_url:
         meta = await extract_url_metadata(raw_text_or_url)
         final_url = meta.get("final_url") or raw_text_or_url
         asin = meta.get("asin")
         store = meta.get("store") or detect_store_from_url(final_url)
+        extracted_price = meta.get("extracted_price")
+        clean_title = meta.get("clean_title") or meta.get("title")
         
         # Check instant verified lookup if known ASIN
         if asin and asin in KNOWN_ASINS:
@@ -216,14 +253,15 @@ async def normalize_product_with_gemini(raw_text_or_url: str) -> NormalizedProdu
                 source_store=store,
                 thumbnail_url=meta.get("image") or item["image"],
                 original_url=raw_text_or_url,
+                extracted_price=extracted_price,
                 is_found=True
             )
 
-        raw_info = f"URL: {raw_text_or_url}\nResolved Final URL: {final_url}\nStore: {store}\nExtracted Title: {meta.get('title')}\nDescription: {meta.get('description')}"
+        raw_info = f"URL: {raw_text_or_url}\nResolved Final URL: {final_url}\nStore/Platform: {store}\nPage Title: {clean_title}\nExtracted Price: {extracted_price}\nDescription: {meta.get('description')}"
         if asin:
-            raw_info += f"\nProduct ASIN: {asin}\nCRITICAL INSTRUCTION: The user provided an Amazon India link or shortlink. Use Google Search to look up: `Amazon India {asin}` or `site:amazon.in {asin}` to identify the real Brand, Product Name, and Variant. Do NOT return '{asin}' or 'Amazon.in' as the product title."
-        elif not meta.get('title') or len(meta.get('title')) < 4:
-            raw_info += f"\nCRITICAL INSTRUCTION: The page title could not be read directly from the URL (likely a mobile app shortened link or ID from Blinkit, Flipkart, Myntra, etc.). Use Google Search to search for this URL or product path: `{final_url}` to identify the real Brand, Product Name, and Variant."
+            raw_info += f"\nProduct ASIN: {asin}\nCRITICAL INSTRUCTION: The user provided an Amazon India link or shortlink with ASIN {asin}. Identify the real Brand, Product Name, and Variant. Do NOT return '{asin}' or 'Amazon.in' as the product title."
+        elif not clean_title or len(clean_title) < 4:
+            raw_info += f"\nCRITICAL INSTRUCTION: The page title could not be read directly from the URL. Identify the real Brand, Product Name, and Variant from the URL path: `{final_url}`."
         thumbnail = meta.get("image")
     else:
         # Check if raw text is directly an ASIN
@@ -240,24 +278,26 @@ async def normalize_product_with_gemini(raw_text_or_url: str) -> NormalizedProdu
                 source_store="Amazon",
                 thumbnail_url=item["image"],
                 original_url=None,
+                extracted_price=None,
                 is_found=True
             )
         raw_info = f"Product Search Query: {raw_text_or_url}"
         store = "Direct Search"
         thumbnail = None
+        clean_title = raw_text_or_url
 
     prompt = f"""
-You are an expert Indian e-commerce product extraction engine equipped with Google Search.
-Analyze the following shopping link or query:
+You are an expert Indian e-commerce product extraction engine.
+Analyze the following shopping link metadata or query:
 ---
 {raw_info}
 ---
 TASK:
-Use Google Search if needed to identify the exact, authentic product identity without any marketing fluff.
+Extract the exact, authentic product identity without marketing fluff or retailer noise.
 Rules:
-1. Identify the exact Brand (e.g. Minimalist, Maybelline, Dot & Key, Cetaphil, L'Oreal, Laneige, Philips, MuscleBlaze, NEWME, The Ordinary). NEVER output "Amazon" or "Generic" if the product is sold on Amazon!
-2. Extract the core Product Name (e.g. Niacinamide 10% Face Serum with Zinc).
-3. Extract the Variant/Volume/Shade if present (e.g. 30ml, 50ml, Shade 128 Warm Nude, 20g, 1kg).
+1. Identify the exact Brand (e.g. Cetaphil, Minimalist, Maybelline, Dot & Key, L'Oreal, Laneige, Philips, MuscleBlaze, NEWME, The Ordinary). CRITICAL: Store names like "Blinkit", "Amazon", "Nykaa", "Flipkart", "Zepto", "Tira" are RETAIL PLATFORMS, NEVER the product brand!
+2. Extract the core Product Name (e.g. DAM Daily Advance Ultra Hydrating Moisturizing Lotion). Do NOT include promotional words like "Price", "Buy Online", or "in India".
+3. Extract the Variant/Volume/Shade if present (e.g. 100g, 30ml, 50ml, Shade 128 Warm Nude, 20g, 1kg).
 4. Assign the appropriate category: Skincare, Makeup, Haircare, Fragrance, Fashion & Apparel, Grooming, or Fitness & Nutrition.
 5. Generate the normalized_title combining Brand + Product Name + Variant.
 6. Generate an optimized search_query for searching this exact SKU across other Indian stores.
@@ -281,38 +321,26 @@ If not found:
 }}
 """
 
-    # Call Gemini API with Google Search Grounding
+    # Call Gemini API directly (no rate-limited search retrieval tools)
     if settings.GEMINI_API_KEY:
         try:
             import google.generativeai as genai
             genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
-
+            model = genai.GenerativeModel("gemini-3.5-flash")
+            response = await asyncio.to_thread(
+                model.generate_content,
+                prompt,
+                generation_config={"response_mime_type": "application/json"}
+            )
+            
             resp_text = ""
             try:
-                model = genai.GenerativeModel("gemini-3.5-flash", tools="google_search_retrieval")
-                response = await asyncio.to_thread(model.generate_content, prompt)
-                try:
-                    resp_text = response.text
-                except Exception:
-                    if hasattr(response, "candidates") and response.candidates:
-                        cand = response.candidates[0]
-                        if hasattr(cand, "content") and hasattr(cand.content, "parts"):
-                            resp_text = "".join(getattr(part, "text", "") for part in cand.content.parts)
-            except Exception as tool_err:
-                logger.warning(f"Gemini tools=google_search_retrieval fallback ({tool_err}), calling standard model...")
-                model = genai.GenerativeModel("gemini-3.5-flash")
-                response = await asyncio.to_thread(
-                    model.generate_content,
-                    prompt,
-                    generation_config={"response_mime_type": "application/json"}
-                )
-                try:
-                    resp_text = response.text
-                except Exception:
-                    if hasattr(response, "candidates") and response.candidates:
-                        cand = response.candidates[0]
-                        if hasattr(cand, "content") and hasattr(cand.content, "parts"):
-                            resp_text = "".join(getattr(part, "text", "") for part in cand.content.parts)
+                resp_text = response.text
+            except Exception:
+                if hasattr(response, "candidates") and response.candidates:
+                    cand = response.candidates[0]
+                    if hasattr(cand, "content") and hasattr(cand.content, "parts"):
+                        resp_text = "".join(getattr(part, "text", "") for part in cand.content.parts)
 
             clean_json_str = resp_text.strip()
             if "```json" in clean_json_str:
@@ -336,12 +364,28 @@ If not found:
                     source_store=store,
                     thumbnail_url=thumbnail,
                     original_url=raw_text_or_url if is_url else None,
+                    extracted_price=extracted_price,
                     is_found=False,
                     not_found_reason=data.get("not_found_reason") or "Sorry, we couldn't recognize this product from the link or ID provided."
                 )
 
             brand = data.get("brand", "Unknown Brand").strip()
             product_name = data.get("product_name", raw_text_or_url).strip()
+
+            # Prevent retail platform name from ever being assigned as brand
+            if brand in KNOWN_RETAILERS:
+                matched_brand = None
+                search_space = f"{clean_title} {product_name}"
+                for b in sorted(KNOWN_BRANDS_LIST, key=len, reverse=True):
+                    if re.search(r'\b' + re.escape(b) + r'\b', search_space, re.I):
+                        matched_brand = b
+                        break
+                if matched_brand:
+                    brand = matched_brand
+                elif store in ["NEWME", "Boult", "boAt", "Urbanic", "Savana"]:
+                    brand = store
+                else:
+                    brand = clean_title.split()[0] if clean_title and clean_title.split() else "Generic"
 
             # Guard against raw ASIN being returned as title
             if asin and (product_name == asin or brand.lower() in ["amazon", "generic", "unknown"]):
@@ -356,6 +400,7 @@ If not found:
                         source_store=store,
                         thumbnail_url=thumbnail,
                         original_url=raw_text_or_url if is_url else None,
+                        extracted_price=extracted_price,
                         is_found=False,
                         not_found_reason=f"Sorry, we couldn't identify the product for Amazon ASIN {asin}. Please try pasting the product title directly."
                     )
@@ -372,13 +417,15 @@ If not found:
                 source_store=store,
                 thumbnail_url=img_url,
                 original_url=raw_text_or_url if is_url else None,
+                extracted_price=extracted_price,
                 is_found=True
             )
         except Exception as e:
-            logger.error(f"Gemini API call failed: {e}. Using rule-based fallback.")
+            logger.error(f"Gemini API call failed: {e}. Using intelligent rule-based fallback.")
 
     # Rule-based fallback if no Gemini API Key or API error
-    title = meta.get("title") if is_url else raw_text_or_url
+    title = meta.get("clean_title") if (is_url and meta.get("clean_title")) else (meta.get("title") if is_url else raw_text_or_url)
+    extracted_price = meta.get("extracted_price") if is_url else None
     
     # If title is empty, or contains the ASIN, or store is Amazon and title is generic/unrecognized
     if asin or store == "Amazon":
@@ -393,35 +440,35 @@ If not found:
                 source_store=store,
                 thumbnail_url=thumbnail,
                 original_url=raw_text_or_url if is_url else None,
+                extracted_price=extracted_price,
                 is_found=False,
                 not_found_reason=f"Sorry, we couldn't resolve the product details for this Amazon link. Please try searching with the product name directly."
             )
 
-    # Clean brand suffixes like " - NEWME", " | Nykaa", " - Myntra"
     brand_guess = "Generic"
     clean_title = title
-    if store and store != "Online Store":
-        brand_guess = store
-    
-    for sep in [" - ", " | ", " – ", " — "]:
-        if sep in clean_title:
-            parts = clean_title.split(sep)
-            if len(parts) >= 2:
-                last_part = parts[-1].strip()
-                if last_part.upper() in ["NEWME", "NYKAA", "MYNTRA", "AJIO", "TIRA", "AMAZON", "URBANIC"]:
-                    brand_guess = last_part.upper()
-                    clean_title = " ".join(parts[:-1]).strip()
+
+    # Match against known authentic brands first
+    for b in sorted(KNOWN_BRANDS_LIST, key=len, reverse=True):
+        if re.search(r'\b' + re.escape(b) + r'\b', clean_title, re.I):
+            brand_guess = b
+            # Remove brand prefix from product title
+            clean_title = re.sub(r'^\s*' + re.escape(b) + r'[\s\-–—:]*', '', clean_title, flags=re.I).strip()
+            break
+
+    if brand_guess == "Generic":
+        if store in ["NEWME", "Boult", "boAt", "Urbanic", "Savana"]:
+            brand_guess = store
+        else:
+            words = clean_title.split()
+            if words and words[0] not in KNOWN_RETAILERS:
+                brand_guess = words[0]
+                clean_title = " ".join(words[1:]) if len(words) > 1 else clean_title
 
     fashion_keywords = ["top", "dress", "jeans", "shirt", "skirt", "kurta", "pant", "hoodie", "tshirt", "t-shirt", "corset", "tube", "blazer", "trouser", "sweatshirt"]
     is_fashion = any(kw in clean_title.lower() for kw in fashion_keywords) or store in ["NEWME", "Myntra", "Ajio", "Urbanic"]
     category = "Fashion & Apparel" if is_fashion else "Beauty & Personal Care"
 
-    if brand_guess in ["Generic", "Amazon", "Online Store", "Flipkart"]:
-        words = clean_title.split()
-        if words:
-            brand_guess = words[0]
-            clean_title = " ".join(words[1:]) if len(words) > 1 else clean_title
-    
     normalized_title = f"{brand_guess} {clean_title}" if brand_guess.lower() not in clean_title.lower() else clean_title
 
     return NormalizedProduct(
@@ -434,5 +481,6 @@ If not found:
         source_store=store,
         thumbnail_url=thumbnail,
         original_url=raw_text_or_url if is_url else None,
+        extracted_price=extracted_price,
         is_found=True
     )

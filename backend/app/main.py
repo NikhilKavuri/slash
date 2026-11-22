@@ -142,65 +142,6 @@ def persist_product_offers(clean_input: str, product_data: dict, offers_data: li
     except Exception as e:
         print(f"Notice: Supabase logging async error ({e})")
 
-@app.get("/diag/scrape")
-@app.get("/api/v1/diag/scrape")
-async def diag_scrape(url: str = "https://blinkit.com/prn/x/prid/764770"):
-    t0 = time.time()
-    from app.services.ai_extractor import extract_url_metadata
-    meta = await extract_url_metadata(url)
-    return {"ms": round((time.time() - t0) * 1000, 1), "meta": meta}
-
-@app.get("/diag/gemini")
-@app.get("/api/v1/diag/gemini")
-async def diag_gemini():
-    import traceback
-    t0 = time.time()
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
-        m = genai.GenerativeModel("gemini-flash-latest")
-        resp = await asyncio.to_thread(
-            m.generate_content,
-            "Say PONG",
-            request_options={"timeout": 4.0, "retry": None}
-        )
-        return {"status": "ok", "ms": round((time.time() - t0) * 1000, 1), "model": "gemini-flash-latest", "reply": resp.text}
-    except Exception as e:
-        return {"status": "error", "ms": round((time.time() - t0) * 1000, 1), "error": str(e), "trace": traceback.format_exc()}
-
-@app.get("/diag")
-@app.get("/v1/diag")
-@app.get("/api/v1/diag")
-async def run_diagnostics(url: str = "https://blinkit.com/prn/x/prid/764770"):
-    import traceback
-    timing = {}
-    
-    t0 = time.time()
-    try:
-        from app.services.ai_extractor import extract_url_metadata
-        meta = await extract_url_metadata(url)
-        timing["extract_url_metadata"] = {"status": "ok", "ms": round((time.time() - t0) * 1000, 1), "data": meta}
-    except Exception as e:
-        timing["extract_url_metadata"] = {"status": "error", "ms": round((time.time() - t0) * 1000, 1), "error": str(e), "trace": traceback.format_exc()}
-
-    t1 = time.time()
-    prod = None
-    try:
-        prod = await normalize_product_with_gemini(url)
-        timing["normalize_product"] = {"status": "ok", "ms": round((time.time() - t1) * 1000, 1), "data": prod.model_dump()}
-    except Exception as e:
-        timing["normalize_product"] = {"status": "error", "ms": round((time.time() - t1) * 1000, 1), "error": str(e), "trace": traceback.format_exc()}
-
-    t2 = time.time()
-    if prod:
-        try:
-            offers = await fetch_store_offers(prod)
-            timing["fetch_store_offers"] = {"status": "ok", "ms": round((time.time() - t2) * 1000, 1), "count": len(offers), "offers": [o.model_dump() for o in offers]}
-        except Exception as e:
-            timing["fetch_store_offers"] = {"status": "error", "ms": round((time.time() - t2) * 1000, 1), "error": str(e), "trace": traceback.format_exc()}
-
-    return {"total_ms": round((time.time() - t0) * 1000, 1), "steps": timing}
-
 @app.get("/")
 @app.get("/health")
 @app.get("/v1/health")

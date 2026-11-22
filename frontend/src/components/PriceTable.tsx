@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { StoreOffer } from "@/lib/api";
+import { StoreOffer, NormalizedProduct } from "@/lib/api";
 import { formatINR } from "@/lib/utils";
 import {
   ExternalLink,
@@ -28,9 +28,10 @@ interface PriceTableProps {
   offers: StoreOffer[];
   bestOffer: StoreOffer;
   fastestOffer?: StoreOffer;
+  product?: NormalizedProduct;
 }
 
-export function PriceTable({ offers, bestOffer, fastestOffer }: PriceTableProps) {
+export function PriceTable({ offers, bestOffer, fastestOffer, product }: PriceTableProps) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"side-by-side" | "list">("side-by-side");
   const { showCouponToast } = useSnackbar();
@@ -172,10 +173,10 @@ export function PriceTable({ offers, bestOffer, fastestOffer }: PriceTableProps)
                   {/* Store Product Listing Photo */}
                   <div className="aspect-[4/3] w-full rounded-xl bg-zinc-50 border border-zinc-100 overflow-hidden relative flex items-center justify-center">
                     <ImageWithFallback
-                      src={offer.image_url}
-                      alt={`${offer.store_name} - ${offer.seller_name}`}
-                      category={offer.store_name}
-                      brand={offer.store_name}
+                      src={offer.image_url || product?.thumbnail_url}
+                      alt={`${product?.brand || offer.store_name} - ${product?.normalized_title || offer.seller_name}`}
+                      category={product?.category || "Verified Deal"}
+                      brand={product?.brand || offer.store_name}
                       className="w-full h-full object-contain p-2 hover:scale-105 transition-transform duration-200"
                     />
                     <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-white/90 text-zinc-800 border border-zinc-200/60 shadow-2xs">
@@ -308,10 +309,10 @@ export function PriceTable({ offers, bestOffer, fastestOffer }: PriceTableProps)
                   {/* Store Product Listing Photo in List View */}
                   <div className="w-14 h-14 rounded-xl bg-zinc-50 border border-zinc-200/80 overflow-hidden relative shrink-0 flex items-center justify-center">
                     <ImageWithFallback
-                      src={offer.image_url}
-                      alt={`${offer.store_name} - ${offer.seller_name}`}
-                      category={offer.store_name}
-                      brand={offer.store_name}
+                      src={offer.image_url || product?.thumbnail_url}
+                      alt={`${product?.brand || offer.store_name} - ${product?.normalized_title || offer.seller_name}`}
+                      category={product?.category || "Verified Deal"}
+                      brand={product?.brand || offer.store_name}
                       className="w-full h-full object-contain p-1"
                     />
                   </div>

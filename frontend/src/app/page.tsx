@@ -410,6 +410,7 @@ export default function HomePage() {
                   offers={result.offers}
                   bestOffer={result.best_offer!}
                   fastestOffer={result.fastest_offer || undefined}
+                  product={result.product}
                 />
 
                 {/* 30-Day Price Trend Graph & The Real Tea Grid */}

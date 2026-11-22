@@ -189,15 +189,15 @@ async def test_scrape(q: str = "Philips BT1232 Trimmer"):
     clean_q = quote_plus(q)
     amz_url = f"https://www.amazon.in/s?k={clean_q}"
     fk_url = f"https://www.flipkart.com/search?q={clean_q}"
-    g_url = f"https://www.google.com/search?tbm=shop&q={clean_q}&gl=in&hl=en"
+    cr_url = f"https://www.croma.com/searchB?q={clean_q}%3Arelevance&text={clean_q}"
     
     amz_html = await fetch_page_html(amz_url)
     fk_html = await fetch_page_html(fk_url)
-    g_html = await fetch_page_html(g_url)
+    cr_html = await fetch_page_html(cr_url)
     
     amz_soup = BeautifulSoup(amz_html or "", "html.parser")
     fk_soup = BeautifulSoup(fk_html or "", "html.parser")
-    g_soup = BeautifulSoup(g_html or "", "html.parser")
+    cr_soup = BeautifulSoup(cr_html or "", "html.parser")
     
     # Inspect Flipkart card structure
     fk_sample = []
@@ -226,11 +226,11 @@ async def test_scrape(q: str = "Philips BT1232 Trimmer"):
             "sample_cards": fk_sample,
             "parsed": parse_flipkart_search(fk_html or "")[:2]
         },
-        "google_shopping": {
-            "html_len": len(g_html or ""),
-            "title": g_soup.title.string if g_soup.title else None,
-            "results_count": len(g_soup.select('div.sh-dgr__content, div[data-docid]')),
-            "sample_text": g_soup.text[:200]
+        "croma": {
+            "html_len": len(cr_html or ""),
+            "title": cr_soup.title.string if cr_soup.title else None,
+            "items_count": len(cr_soup.select('li.product-item, div.cp-product')),
+            "parsed": parse_croma_search(cr_html or "")[:2]
         }
     }
 

@@ -222,58 +222,74 @@ def parse_amazon_search(html: str) -> List[Dict[str, Any]]:
 
 
 def parse_flipkart_search(html: str) -> List[Dict[str, Any]]:
-    """Parse real Flipkart search results from HTML."""
+    """Parse real Flipkart search results from HTML with robust fallback on link slugs and price symbols."""
     soup = BeautifulSoup(html, "html.parser")
     results = []
 
-    # Flipkart uses different class layouts for electronics (list) vs fashion/lifestyle (grid)
-    items = soup.select('div._75nlfW, div[data-id], div._1AtVbE')
-    for item in items[:6]:
+    items = soup.select('div._75nlfW, div[data-id], div._1AtVbE, div.cPHDOP')
+    for item in items[:8]:
         try:
-            # Title
-            title_el = item.select_one('div.KzDlHZ, a.wjcEIp, a.IRpwTa, div._4rR01T, a[title]')
-            if not title_el:
-                continue
-            title = title_el.get('title') or title_el.text.strip()
-            if not title:
-                continue
-
-            # Link
-            link_el = item.select_one('a._9PwA5C, a.CGtC5Q, a[href*="/p/"]')
+            # Direct product link
+            link_el = item.select_one('a[href*="/p/"]') or item.select_one('a._9PwA5C, a.CGtC5Q')
             if not link_el or not link_el.get('href'):
                 continue
             href = link_el['href']
             clean_href = href.split('?')[0]
             direct_url = f"https://www.flipkart.com{clean_href}" if clean_href.startswith('/') else clean_href
 
+            # Title
+            title = None
+            title_el = item.select_one('div.KzDlHZ, a.wjcEIp, a.IRpwTa, div._4rR01T, a[title]')
+            if title_el:
+                title = title_el.get('title') or title_el.text.strip()
+            if not title and '/p/' in href:
+                slug = href.split('/p/')[0].lstrip('/')
+                title = slug.replace('-', ' ').title()
+            if not title:
+                continue
+
             # Price
-            price_el = item.select_one('div.Nx9bqj, div._30jeq3')
-            if not price_el:
+            price = None
+            price_el = item.select_one('div.Nx9bqj, div._30jeq3, [class*="Nx9bqj"], [class*="_30jeq3"]')
+            if price_el:
+                p_match = re.search(r'([0-9,]+)', price_el.text.replace('₹', ''))
+                if p_match:
+                    try:
+                        price = float(p_match.group(1).replace(',', ''))
+                    except ValueError:
+                        pass
+
+            if not price:
+                prices_in_text = re.findall(r'₹\s*([0-9,]+)', item.text)
+                if prices_in_text:
+                    try:
+                        price = float(prices_in_text[0].replace(',', ''))
+                    except ValueError:
+                        pass
+
+            if not price or price <= 0:
                 continue
-            p_match = re.search(r'([0-9,]+)', price_el.text)
-            if not p_match:
-                continue
-            price = float(p_match.group(1).replace(',', ''))
 
             # MRP
-            mrp_el = item.select_one('div.yRaY8j, div._3I9_wc')
-            mrp = price
-            if mrp_el:
-                m_match = re.search(r'([0-9,]+)', mrp_el.text)
-                if m_match:
-                    mrp = float(m_match.group(1).replace(',', ''))
-            if mrp < price:
-                mrp = round(price * 1.25, 2)
+            mrp = round(price * 1.25, 2)
+            prices_all = re.findall(r'₹\s*([0-9,]+)', item.text)
+            if len(prices_all) > 1:
+                try:
+                    second_p = float(prices_all[1].replace(',', ''))
+                    if second_p > price:
+                        mrp = second_p
+                except ValueError:
+                    pass
 
             # Image
-            img_el = item.select_one('img.DByuf4, img._53G40d, img._396cs4')
+            img_el = item.select_one('img.DByuf4, img._53G40d, img._396cs4, img')
             img_url = img_el.get('src') if img_el else None
             if img_url and "rukmini2." in img_url:
                 img_url = img_url.replace("rukmini2.", "rukminim2.")
 
             # Rating
-            r_el = item.select_one('div.XQDdHH, div._3LWZlK')
             rating = 4.4
+            r_el = item.select_one('div.XQDdHH, div._3LWZlK')
             if r_el:
                 try:
                     rating = float(r_el.text.strip())
@@ -302,14 +318,9 @@ def parse_croma_search(html: str) -> List[Dict[str, Any]]:
     soup = BeautifulSoup(html, "html.parser")
     results = []
 
-    cards = soup.select('li.product-item, div.cp-product')
-    for card in cards[:5]:
+    cards = soup.select('li.product-item, div.cp-product, div.product-info, li[class*="product"]')
+    for card in cards[:6]:
         try:
-            title_el = card.select_one('h3.product-title, a.product-title')
-            if not title_el:
-                continue
-            title = title_el.text.strip()
-
             link_el = card.select_one('a[href*="/p/"]')
             if not link_el or not link_el.get('href'):
                 continue
@@ -317,22 +328,38 @@ def parse_croma_search(html: str) -> List[Dict[str, Any]]:
             clean_href = href.split('?')[0]
             direct_url = f"https://www.croma.com{clean_href}" if clean_href.startswith('/') else clean_href
 
-            price_el = card.select_one('span.amount')
-            if not price_el:
+            title_el = card.select_one('h3.product-title, a.product-title, [class*="product-title"]')
+            title = None
+            if title_el:
+                title = title_el.text.strip()
+            if not title and '/p/' in href:
+                slug = href.split('/p/')[0].lstrip('/')
+                title = slug.replace('-', ' ').title()
+            if not title:
                 continue
-            p_match = re.search(r'([0-9,]+)', price_el.text)
-            if not p_match:
-                continue
-            price = float(p_match.group(1).replace(',', ''))
 
-            mrp_el = card.select_one('span.old-price, span.mrp')
+            price_el = card.select_one('span.amount, [class*="amount"], [class*="price"]')
+            price = None
+            if price_el:
+                p_match = re.search(r'([0-9,]+)', price_el.text)
+                if p_match:
+                    try:
+                        price = float(p_match.group(1).replace(',', ''))
+                    except ValueError:
+                        pass
+            if not price:
+                prices_in_text = re.findall(r'₹\s*([0-9,]+)', card.text)
+                if prices_in_text:
+                    try:
+                        price = float(prices_in_text[0].replace(',', ''))
+                    except ValueError:
+                        pass
+
+            if not price or price <= 0:
+                continue
+
             mrp = round(price * 1.25, 2)
-            if mrp_el:
-                m_match = re.search(r'([0-9,]+)', mrp_el.text)
-                if m_match:
-                    mrp = float(m_match.group(1).replace(',', ''))
-
-            img_el = card.select_one('img.product-img, img')
+            img_el = card.select_one('img.product-img, img[src*="croma"], img')
             img_url = img_el.get('src') if img_el else None
 
             results.append({

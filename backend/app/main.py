@@ -179,10 +179,25 @@ async def health_check():
     except Exception:
         p_count = 0
 
+    gemini_status = "not_configured"
+    gemini_error = None
+    try:
+        if settings.GEMINI_API_KEY:
+            import google.generativeai as genai
+            genai.configure(api_key=settings.GEMINI_API_KEY)
+            m = genai.GenerativeModel("gemini-2.0-flash")
+            resp = await m.generate_content_async("ping")
+            gemini_status = "ok: " + (resp.text or "").strip()[:20]
+    except Exception as ge:
+        gemini_status = "error"
+        gemini_error = str(ge)
+
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
         "gemini_configured": bool(settings.GEMINI_API_KEY),
+        "gemini_live": gemini_status,
+        "gemini_error": gemini_error,
         "database_connected": db_connected,
         "tracked_products": p_count,
         "timestamp": time.time()

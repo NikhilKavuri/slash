@@ -227,7 +227,10 @@ async def extract_url_metadata(url: str) -> Dict[str, Any]:
                     metadata["description"] = og_desc["content"].strip()
                 
                 if not metadata.get("image") and og_image and og_image.get("content"):
-                    metadata["image"] = og_image["content"].strip()
+                    img_cand = og_image["content"].strip()
+                    if "rukmini2." in img_cand:
+                        img_cand = img_cand.replace("rukmini2.", "rukminim2.")
+                    metadata["image"] = img_cand
 
                 # 3. HTML Microdata & Price Classes if price still not extracted
                 if not metadata["extracted_price"]:
@@ -494,8 +497,10 @@ If not found:
                     )
 
             img_url = data.get("image_url") if (data.get("image_url") and "http" in str(data.get("image_url"))) else thumbnail
+            if img_url and "rukmini2." in str(img_url):
+                img_url = img_url.replace("rukmini2.", "rukminim2.")
             if not img_url and "iphone" in f"{brand} {product_name}".lower():
-                img_url = "https://rukmini2.flixcart.com/image/832/832/xif0q/mobile/2/p/o/-original-imahqvad9pbyujab.jpeg"
+                img_url = "https://rukminim2.flixcart.com/image/832/832/xif0q/mobile/2/p/o/-original-imahqvad9pbyujab.jpeg"
 
             gemini_price = data.get("price")
             if not extracted_price and gemini_price and isinstance(gemini_price, (int, float)) and gemini_price > 0:
@@ -602,7 +607,7 @@ If not found:
         if "iphone 17" in text_lower:
             extracted_price = 89100.0
             if not thumbnail:
-                thumbnail = "https://rukmini2.flixcart.com/image/832/832/xif0q/mobile/2/p/o/-original-imahqvad9pbyujab.jpeg"
+                thumbnail = "https://rukminim2.flixcart.com/image/832/832/xif0q/mobile/2/p/o/-original-imahqvad9pbyujab.jpeg"
         elif "iphone 16" in text_lower:
             extracted_price = 74900.0
             if not thumbnail:

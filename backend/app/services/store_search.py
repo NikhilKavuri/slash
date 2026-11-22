@@ -595,7 +595,7 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
                     is_scam_flagged=False,
                     scam_warning=None,
                     authenticity_score=99,
-                    image_url=product.thumbnail_url or "https://rukmini2.flixcart.com/image/832/832/xif0q/mobile/2/p/o/-original-imahqvad9pbyujab.jpeg",
+                    image_url=(product.thumbnail_url or "https://rukminim2.flixcart.com/image/832/832/xif0q/mobile/2/p/o/-original-imahqvad9pbyujab.jpeg").replace("rukmini2.", "rukminim2."),
                 ))
 
     # Deduplicate offers by store name

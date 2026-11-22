@@ -177,23 +177,17 @@ async def health_check():
         "timestamp": time.time()
     }
 
-@app.get("/api/v1/test-gemini-grounding")
-async def test_gemini_grounding(q: str = "Philips BT1232 Trimmer price on Amazon India"):
-    import google.generativeai as genai
-    genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
-    results = {}
-    
-    test_models = ["gemini-flash-latest", "gemini-pro-latest", "gemini-flash-lite-latest", "gemini-3-flash-preview"]
-    for mod in test_models:
-        try:
-            m = genai.GenerativeModel(mod, tools="google_search_retrieval")
-            r = await asyncio.to_thread(m.generate_content, q)
-            results[mod] = {"success": True, "text": r.text[:300]}
-            break
-        except Exception as e:
-            results[mod] = {"success": False, "error": str(e)}
-
-    return results
+@app.get("/api/v1/test-scrape")
+async def test_scrape(q: str = "Philips BT1232 Trimmer"):
+    from app.services.browser_scraper import search_single_store
+    amz = await search_single_store("Amazon", q)
+    fk = await search_single_store("Flipkart", q)
+    return {
+        "amazon_count": len(amz),
+        "amazon_sample": amz[:2],
+        "flipkart_count": len(fk),
+        "flipkart_sample": fk[:2],
+    }
 
 @app.post("/compare", response_model=CompareResponse)
 @app.post("/v1/compare", response_model=CompareResponse)

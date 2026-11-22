@@ -398,6 +398,7 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
                     s_name = pp.store_name
                     if s_name.lower() in existing_store_names:
                         continue
+                    existing_store_names.add(s_name.lower())
 
                     s_price = float(pp.price)
                     s_mrp = round(s_price * 1.25, 2)
@@ -524,6 +525,16 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
             db.close()
         except Exception as db_err:
             logger.warning(f"Database offers fallback skipped: {db_err}")
+
+    # Deduplicate offers by store name
+    seen_stores = set()
+    unique_offers = []
+    for o in offers:
+        s_lower = o.store_name.lower()
+        if s_lower not in seen_stores:
+            seen_stores.add(s_lower)
+            unique_offers.append(o)
+    offers = unique_offers
 
     # Sort by real checkout price (final_price after coupon)
     offers.sort(key=lambda x: x.final_price)

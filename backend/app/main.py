@@ -183,25 +183,15 @@ async def test_gemini_grounding(q: str = "Philips BT1232 Trimmer price on Amazon
     genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
     results = {}
     
-    # 1. List available models
-    try:
-        available = []
-        for m in genai.list_models():
-            if "generateContent" in m.supported_generation_methods:
-                available.append(m.name)
-        results["available_models"] = available[:15]
-    except Exception as e:
-        results["list_models_error"] = str(e)
-
-    # 2. Test with the first available model
-    if results.get("available_models"):
-        first_model = results["available_models"][0].replace("models/", "")
+    test_models = ["gemini-flash-latest", "gemini-pro-latest", "gemini-flash-lite-latest", "gemini-3-flash-preview"]
+    for mod in test_models:
         try:
-            m = genai.GenerativeModel(first_model, tools="google_search_retrieval")
+            m = genai.GenerativeModel(mod, tools="google_search_retrieval")
             r = await asyncio.to_thread(m.generate_content, q)
-            results["grounded_search"] = {"model": first_model, "success": True, "text": r.text[:300]}
+            results[mod] = {"success": True, "text": r.text[:300]}
+            break
         except Exception as e:
-            results["grounded_search"] = {"model": first_model, "success": False, "error": str(e)}
+            results[mod] = {"success": False, "error": str(e)}
 
     return results
 

@@ -289,7 +289,7 @@ If not found:
 
             resp_text = ""
             try:
-                model = genai.GenerativeModel("gemini-2.5-flash", tools="google_search_retrieval")
+                model = genai.GenerativeModel("gemini-3.5-flash", tools="google_search_retrieval")
                 response = await asyncio.to_thread(model.generate_content, prompt)
                 try:
                     resp_text = response.text
@@ -300,7 +300,7 @@ If not found:
                             resp_text = "".join(getattr(part, "text", "") for part in cand.content.parts)
             except Exception as tool_err:
                 logger.warning(f"Gemini tools=google_search_retrieval fallback ({tool_err}), calling standard model...")
-                model = genai.GenerativeModel("gemini-2.5-flash")
+                model = genai.GenerativeModel("gemini-3.5-flash")
                 response = await asyncio.to_thread(
                     model.generate_content,
                     prompt,

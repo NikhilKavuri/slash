@@ -172,11 +172,12 @@ async def test_gemini():
 @app.get("/api/v1/test-grounding")
 async def test_grounding():
     try:
+        import asyncio
         import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        m = genai.GenerativeModel("gemini-3.8-flash", tools="google_search_retrieval")
-        resp = await m.generate_content_async("What is the price of Boult Mustang Muscle smartwatch on Amazon India?")
-        return {"status": "success", "response": resp.text}
+        genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
+        m = genai.GenerativeModel("gemini-3.5-flash", tools="google_search_retrieval")
+        resp = await asyncio.to_thread(m.generate_content, "Search the web: What is the current price of Boult Mustang Muscle smartwatch on Amazon India?")
+        return {"status": "success", "response": resp.text[:250]}
     except Exception as e:
         import traceback
         return {"status": "error", "error": str(e), "trace": traceback.format_exc()}

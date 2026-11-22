@@ -123,7 +123,7 @@ async def search_exact_products_with_gemini(
 
     try:
         genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
-        model = genai.GenerativeModel(model_name="gemini-3.8-flash")
+        model = genai.GenerativeModel(model_name="gemini-flash-latest")
 
         if target_stores and len(target_stores) > 0:
             stores_formatted = "\n".join([f"- {s}" for s in target_stores])

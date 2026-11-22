@@ -215,6 +215,15 @@ async def compare_product(req: CompareRequest, background_tasks: BackgroundTasks
             "processing_time_ms": round((time.time() - start_time) * 1000, 1)
         }
 
+    # Sanitize and ensure valid image domains
+    if product.thumbnail_url and "rukmini2." in product.thumbnail_url:
+        product.thumbnail_url = product.thumbnail_url.replace("rukmini2.", "rukminim2.")
+    for o in offers:
+        if o.image_url and "rukmini2." in o.image_url:
+            o.image_url = o.image_url.replace("rukmini2.", "rukminim2.")
+        elif not o.image_url and product.thumbnail_url:
+            o.image_url = product.thumbnail_url
+
     best_offer = next((o for o in offers if o.is_best_price), offers[0])
     fastest_offer = next((o for o in offers if o.is_fastest_delivery), None)
 

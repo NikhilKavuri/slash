@@ -21,7 +21,9 @@ export function ImageWithFallback({
   const [error, setError] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  if (!src || error) {
+  const sanitizedSrc = src ? src.replace("rukmini2.flixcart.com", "rukminim2.flixcart.com") : undefined;
+
+  if (!sanitizedSrc || error) {
     return (
       <div
         className={`w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-100 via-zinc-200/70 to-zinc-100 p-4 text-center select-none ${className}`}
@@ -49,7 +51,7 @@ export function ImageWithFallback({
         </div>
       )}
       <img
-        src={src}
+        src={sanitizedSrc}
         alt={alt}
         loading="eager"
         onLoad={() => setLoaded(true)}

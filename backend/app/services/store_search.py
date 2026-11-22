@@ -257,9 +257,9 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
         # Use product thumbnail as fallback for image
         offer_img = None
         if image_url and "http" in str(image_url):
-            offer_img = image_url
+            offer_img = str(image_url).replace("rukmini2.", "rukminim2.")
         elif product.thumbnail_url and "http" in str(product.thumbnail_url):
-            offer_img = product.thumbnail_url
+            offer_img = str(product.thumbnail_url).replace("rukmini2.", "rukminim2.")
         
         # Authenticity scoring and Anti-Scam Review Detection
         is_scam = bool(store_data.get("scam_flagged", False))

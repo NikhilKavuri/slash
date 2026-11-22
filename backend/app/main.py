@@ -141,6 +141,24 @@ def persist_product_offers(clean_input: str, product_data: dict, offers_data: li
     except Exception as e:
         print(f"Notice: Supabase logging async error ({e})")
 
+@app.get("/diag/scrape")
+@app.get("/api/v1/diag/scrape")
+async def diag_scrape(url: str = "https://blinkit.com/prn/x/prid/764770"):
+    t0 = time.time()
+    from app.services.ai_extractor import extract_url_metadata
+    meta = await extract_url_metadata(url)
+    return {"ms": round((time.time() - t0) * 1000, 1), "meta": meta}
+
+@app.get("/diag/gemini")
+@app.get("/api/v1/diag/gemini")
+async def diag_gemini():
+    t0 = time.time()
+    import google.generativeai as genai
+    genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
+    model = genai.GenerativeModel("gemini-3.5-flash")
+    resp = await asyncio.to_thread(model.generate_content, "Say OK in JSON: {\"status\": \"ok\"}", generation_config={"response_mime_type": "application/json"})
+    return {"ms": round((time.time() - t0) * 1000, 1), "text": resp.text}
+
 @app.get("/diag")
 @app.get("/v1/diag")
 @app.get("/api/v1/diag")

@@ -3,7 +3,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from app.services.ai_extractor import NormalizedProduct
 from app.services.affiliate_router import affiliate_router
-from app.services.gemini_search import search_exact_products_with_gemini
+from app.services.gemini_search import search_exact_products_with_gemini, _is_search_page_url
 
 logger = logging.getLogger(__name__)
 
@@ -378,11 +378,18 @@ async def fetch_store_offers(product: NormalizedProduct) -> List[StoreOffer]:
             slug = re.sub(r'[^a-zA-Z0-9]+', '-', slug_raw.lower()).strip('-')[:100]
 
             first_word = product.product_name.split()[0] if product.product_name.split() else ""
-            db_p = db.query(ProductModel).filter(
-                (ProductModel.slug == slug) | 
-                (ProductModel.title.ilike(f"%{product.brand}%") & ProductModel.title.ilike(f"%{first_word}%")) |
-                (ProductModel.title.ilike(f"%{product.brand}%"))
-            ).first()
+            db_p = None
+            if slug:
+                db_p = db.query(ProductModel).filter(ProductModel.slug == slug).first()
+            if not db_p and first_word:
+                db_p = db.query(ProductModel).filter(
+                    ProductModel.title.ilike(f"%{product.brand}%") & 
+                    ProductModel.title.ilike(f"%{first_word}%")
+                ).first()
+            if not db_p:
+                db_p = db.query(ProductModel).filter(
+                    ProductModel.title.ilike(f"%{prod_title[:25]}%")
+                ).first()
 
             if db_p and db_p.price_history and len(db_p.price_history) > 0:
                 logger.info(f"Using verified database price points for {db_p.title}")

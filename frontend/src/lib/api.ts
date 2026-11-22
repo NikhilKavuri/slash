@@ -113,6 +113,62 @@ export async function compareProduct(queryOrUrl: string): Promise<CompareResult>
   return res.json();
 }
 
+export function compareProductStream(
+  queryOrUrl: string,
+  callbacks: {
+    onStatus?: (status: { message: string; step?: string; store?: string }) => void;
+    onProduct?: (product: NormalizedProduct) => void;
+    onStoreOffer?: (offer: StoreOffer) => void;
+    onComplete?: (data: { best_offer?: StoreOffer | null; fastest_offer?: StoreOffer | null; total_offers: number }) => void;
+    onError?: (err: any) => void;
+  }
+): () => void {
+  const url = `${API_BASE}/compare/stream?q=${encodeURIComponent(queryOrUrl)}`;
+  const eventSource = new EventSource(url);
+
+  eventSource.addEventListener("status", (e) => {
+    try {
+      if (callbacks.onStatus) callbacks.onStatus(JSON.parse(e.data));
+    } catch {}
+  });
+
+  eventSource.addEventListener("product", (e) => {
+    try {
+      if (callbacks.onProduct) callbacks.onProduct(JSON.parse(e.data));
+    } catch {}
+  });
+
+  eventSource.addEventListener("store_offer", (e) => {
+    try {
+      if (callbacks.onStoreOffer) callbacks.onStoreOffer(JSON.parse(e.data));
+    } catch {}
+  });
+
+  eventSource.addEventListener("complete", (e) => {
+    try {
+      if (callbacks.onComplete) callbacks.onComplete(JSON.parse(e.data));
+    } catch {}
+    eventSource.close();
+  });
+
+  eventSource.addEventListener("not_found", (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (callbacks.onError) callbacks.onError(new Error(data.message || "Product not found"));
+    } catch {}
+    eventSource.close();
+  });
+
+  eventSource.onerror = (err) => {
+    eventSource.close();
+    if (callbacks.onError) callbacks.onError(err);
+  };
+
+  return () => {
+    eventSource.close();
+  };
+}
+
 export async function getTrendingProducts(): Promise<TrendingItem[]> {
   try {
     const res = await fetch(`${API_BASE}/trending`);

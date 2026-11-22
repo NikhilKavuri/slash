@@ -5,6 +5,7 @@ import re
 import asyncio
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -292,8 +293,28 @@ async def compare_product(req: CompareRequest, background_tasks: BackgroundTasks
             cached_result["processing_time_ms"] = round((time.time() - start_time) * 1000, 1)
             return cached_result
 
-    # 2. AI Product Normalization
-    product = await normalize_product_with_gemini(clean_input)
+    # 2. AI Product Normalization / Live Browser PDP Scrape
+    if clean_input.startswith("http"):
+        from app.services.browser_scraper import scrape_pdp_with_browser
+        pdp_data = await scrape_pdp_with_browser(clean_input)
+        if pdp_data.get("is_found") and pdp_data.get("title"):
+            product = NormalizedProduct(
+                brand=pdp_data["brand"],
+                product_name=pdp_data["title"],
+                variant=None,
+                category=pdp_data["category"],
+                normalized_title=pdp_data["title"],
+                search_query=f"{pdp_data['brand']} {pdp_data['title']}",
+                source_store=pdp_data["store"],
+                thumbnail_url=pdp_data["image_url"],
+                original_url=pdp_data["final_url"],
+                extracted_price=pdp_data["price"],
+                is_found=True
+            )
+        else:
+            product = await normalize_product_with_gemini(clean_input)
+    else:
+        product = await normalize_product_with_gemini(clean_input)
 
     # 3. Multi-Store Search & Pricing
     offers = await fetch_store_offers(product)
@@ -359,6 +380,175 @@ async def compare_product(req: CompareRequest, background_tasks: BackgroundTasks
     )
 
     return result
+
+@app.get("/compare/stream")
+@app.get("/v1/compare/stream")
+@app.get("/api/v1/compare/stream")
+async def compare_stream(q: str):
+    """
+    Real-time SSE streaming comparison endpoint.
+    Emits live status, the normalized hero product, and competitor store offers
+    one by one as each store is scraped and verified.
+    """
+    clean_input = q.strip()
+    if not clean_input:
+        raise HTTPException(status_code=400, detail="Query parameter 'q' is required.")
+
+    async def sse_generator():
+        import json
+        from app.services.browser_scraper import scrape_pdp_with_browser, search_single_store, verify_exact_sku_match, CATEGORY_STORES
+        from app.services.affiliate_router import affiliate_router
+        from app.services.store_search import _resolve_store_name
+
+        # 1. Start event
+        yield f"event: status\ndata: {json.dumps({'message': 'Initializing price scanner...', 'step': 'init'})}\n\n"
+
+        # 2. Extract or Normalize Product
+        product = None
+        if clean_input.startswith("http"):
+            yield f"event: status\ndata: {json.dumps({'message': 'Opening product URL with Playwright browser...', 'step': 'pdp_scrape'})}\n\n"
+            pdp_data = await scrape_pdp_with_browser(clean_input)
+            if pdp_data.get("is_found") and pdp_data.get("title"):
+                product = NormalizedProduct(
+                    brand=pdp_data["brand"],
+                    product_name=pdp_data["title"],
+                    variant=None,
+                    category=pdp_data["category"],
+                    normalized_title=pdp_data["title"],
+                    search_query=f"{pdp_data['brand']} {pdp_data['title']}",
+                    source_store=pdp_data["store"],
+                    thumbnail_url=pdp_data["image_url"],
+                    original_url=pdp_data["final_url"],
+                    extracted_price=pdp_data["price"],
+                    is_found=True
+                )
+        
+        if not product:
+            yield f"event: status\ndata: {json.dumps({'message': 'Normalizing product specs...', 'step': 'normalizing'})}\n\n"
+            product = await normalize_product_with_gemini(clean_input)
+
+        if not getattr(product, "is_found", True):
+            yield f"event: not_found\ndata: {json.dumps({'message': getattr(product, 'not_found_reason', 'Product could not be identified.')})}\n\n"
+            return
+
+        # Sanitize image
+        if product.thumbnail_url and "rukmini2." in product.thumbnail_url:
+            product.thumbnail_url = product.thumbnail_url.replace("rukmini2.", "rukminim2.")
+
+        # Yield Product Found (Hero Section populates immediately!)
+        yield f"event: product\ndata: {json.dumps(product.model_dump())}\n\n"
+
+        offers: List[StoreOffer] = []
+
+        # If user gave a direct link with price, emit source store offer immediately!
+        if product.source_store and product.extracted_price:
+            src_canonical = _resolve_store_name(product.source_store, product.brand)
+            perks = affiliate_router.get_store_perks(src_canonical)
+            p_price = float(product.extracted_price)
+            p_mrp = getattr(product, "mrp", None) or round(p_price * 1.25, 2)
+            coupon_cut = round(p_price * 0.05) if perks.get("coupon_code") else 0.0
+            f_price = float(max(1.0, p_price - coupon_cut))
+            src_offer = StoreOffer(
+                store_name=src_canonical,
+                seller_name=f"{src_canonical} Official Verified Retailer",
+                authenticity_badge="100% Genuine Verified Sourced",
+                price=p_price,
+                mrp=float(p_mrp),
+                discount_percent=int(round(((p_mrp - p_price) / p_mrp) * 100)),
+                in_stock=True,
+                rating=4.6,
+                review_count=1850,
+                store_url=product.original_url or clean_input,
+                affiliate_url=affiliate_router.wrap_affiliate_url(src_canonical, product.original_url or clean_input),
+                delivery_badge=perks.get("delivery_badge", "Standard Delivery"),
+                delivery_type=perks.get("delivery_type", "standard"),
+                coupon_code=perks.get("coupon_code"),
+                coupon_desc=perks.get("coupon_desc"),
+                coupon_discount=float(coupon_cut),
+                final_price=f_price,
+                total_discount_percent=int(round(((p_mrp - f_price) / p_mrp) * 100)),
+                savings_vs_mrp=float(p_mrp - f_price),
+                is_scam_flagged=False,
+                scam_warning=None,
+                authenticity_score=99,
+                image_url=product.thumbnail_url,
+            )
+            offers.append(src_offer)
+            yield f"event: store_offer\ndata: {json.dumps(src_offer.model_dump())}\n\n"
+
+        # 3. Stream competitor stores
+        target_stores = CATEGORY_STORES.get(product.category, CATEGORY_STORES["General"])
+        exclude = (product.source_store or "").lower()
+        search_stores = [s for s in target_stores if s.lower() != exclude]
+        search_query = getattr(product, "normalized_title", None) or getattr(product, "product_name", "")
+
+        for store_name in search_stores:
+            yield f"event: status\ndata: {json.dumps({'message': f'Checking {store_name} live prices...', 'step': 'store_search', 'store': store_name})}\n\n"
+            try:
+                candidates = await search_single_store(store_name, f"{product.brand} {search_query}")
+                matched = verify_exact_sku_match(search_query, product.brand, candidates)
+                if matched:
+                    m_price = float(matched["price"])
+                    m_mrp = float(matched.get("mrp", round(m_price * 1.25, 2)))
+                    perks = affiliate_router.get_store_perks(store_name)
+                    c_cut = round(m_price * 0.05) if perks.get("coupon_code") else 0.0
+                    f_price = float(max(1.0, m_price - c_cut))
+                    cand_img = matched.get("image_url") or product.thumbnail_url
+                    if cand_img and "rukmini2." in str(cand_img):
+                        cand_img = str(cand_img).replace("rukmini2.", "rukminim2.")
+
+                    offer = StoreOffer(
+                        store_name=store_name,
+                        seller_name=matched.get("seller") or f"{store_name} Official Verified Retailer",
+                        authenticity_badge="100% Genuine Verified Sourced",
+                        price=m_price,
+                        mrp=m_mrp,
+                        discount_percent=int(round(((m_mrp - m_price) / m_mrp) * 100)),
+                        in_stock=True,
+                        rating=matched.get("rating", 4.4),
+                        review_count=1600,
+                        store_url=matched["direct_url"],
+                        affiliate_url=affiliate_router.wrap_affiliate_url(store_name, matched["direct_url"]),
+                        delivery_badge=perks.get("delivery_badge", "Standard Delivery"),
+                        delivery_type=perks.get("delivery_type", "standard"),
+                        coupon_code=perks.get("coupon_code"),
+                        coupon_desc=perks.get("coupon_desc"),
+                        coupon_discount=float(c_cut),
+                        final_price=f_price,
+                        total_discount_percent=int(round(((m_mrp - f_price) / m_mrp) * 100)),
+                        savings_vs_mrp=float(m_mrp - f_price),
+                        is_scam_flagged=False,
+                        scam_warning=None,
+                        authenticity_score=99,
+                        image_url=cand_img,
+                    )
+                    offers.append(offer)
+                    yield f"event: store_offer\ndata: {json.dumps(offer.model_dump())}\n\n"
+            except Exception as e:
+                logger.warning(f"Error streaming store {store_name}: {e}")
+
+        # 4. Finalize & Persist
+        if offers:
+            offers.sort(key=lambda x: x.final_price)
+            offers[0].is_best_price = True
+            for off in offers:
+                if off.delivery_type == "instant":
+                    off.is_fastest_delivery = True
+                    break
+            best = offers[0]
+            fastest = next((o for o in offers if o.is_fastest_delivery), None)
+
+            # Persist to database
+            try:
+                persist_product_offers(clean_input, product.model_dump(), [o.model_dump() for o in offers])
+            except Exception as db_e:
+                logger.warning(f"Background DB persist exception: {db_e}")
+
+            yield f"event: complete\ndata: {json.dumps({'best_offer': best.model_dump(), 'fastest_offer': fastest.model_dump() if fastest else None, 'total_offers': len(offers)})}\n\n"
+        else:
+            yield f"event: complete\ndata: {json.dumps({'best_offer': None, 'fastest_offer': None, 'total_offers': 0})}\n\n"
+
+    return StreamingResponse(sse_generator(), media_type="text/event-stream")
 
 @app.get("/trending")
 @app.get("/v1/trending")

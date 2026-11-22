@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { compareProduct, CompareResult, getTrendingProducts, TrendingItem } from "@/lib/api";
+import { compareProduct, compareProductStream, CompareResult, getTrendingProducts, TrendingItem, StoreOffer, NormalizedProduct } from "@/lib/api";
 import { formatINR } from "@/lib/utils";
 import { SearchBar } from "@/components/SearchBar";
 import { PriceTable } from "@/components/PriceTable";
@@ -40,8 +40,8 @@ const UNISEX_TRENDING_ITEMS: TrendingItem[] = [
     best_store: "NEWME",
     fastest_store: "NEWME Direct",
     savings: 200,
-    sample_query: "https://newme.asia/product/white-polka-dot-tube-top-4",
-    image: "https://assets.newme.asia/wp-content/uploads/2026/07/17121641c5cf1266/NM-PRC-445-BLS-26-JUL-35660-WHITE(1)-650x975.webp",
+    sample_query: "NEWME White Polka Dot Tube Top",
+    image: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=500&q=80",
   },
   {
     title: "GOBOULT Mustang Muscle Smart Watch (2.01\" Curved HD Display)",
@@ -53,7 +53,7 @@ const UNISEX_TRENDING_ITEMS: TrendingItem[] = [
     best_store: "Amazon",
     fastest_store: "Amazon Prime",
     savings: 3500,
-    sample_query: "https://www.amazon.in/dp/B0GYYM57FP",
+    sample_query: "Boult Mustang Muscle Smart Watch",
     image: "https://goboult.co.in/cdn/shop/files/Res_Artboard6_48e29684-c770-492d-a59c-ac94374c4a59.webp",
   },
   {
@@ -160,39 +160,113 @@ export default function HomePage() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
+    let hasReceivedLiveEvents = false;
+    let accumulatedOffers: StoreOffer[] = [];
+    let initialProduct: NormalizedProduct | null = null;
+
     try {
-      const data = await compareProduct(query);
-      setResult(data);
-      if (typeof window !== "undefined") {
-        window.scrollTo({ top: 0, behavior: "smooth" });
+      compareProductStream(query, {
+        onStatus: () => {},
+        onProduct: (product) => {
+          hasReceivedLiveEvents = true;
+          initialProduct = product;
+          setResult({
+            product,
+            offers: accumulatedOffers,
+            best_offer: null,
+            fastest_offer: null,
+            review_lens: null,
+            price_history: [],
+            not_found: false,
+            cached: false,
+            processing_time_ms: 0,
+          });
+          setIsLoading(false);
+        },
+        onStoreOffer: (offer) => {
+          hasReceivedLiveEvents = true;
+          accumulatedOffers = [...accumulatedOffers.filter(o => o.store_name !== offer.store_name), offer];
+          accumulatedOffers.sort((a, b) => (a.final_price || a.price) - (b.final_price || b.price));
+          if (accumulatedOffers.length > 0) {
+            accumulatedOffers[0].is_best_price = true;
+          }
+          if (initialProduct) {
+            setResult({
+              product: initialProduct,
+              offers: accumulatedOffers,
+              best_offer: accumulatedOffers[0],
+              fastest_offer: accumulatedOffers.find(o => o.delivery_type === "instant") || null,
+              review_lens: null,
+              price_history: [],
+              not_found: false,
+              cached: false,
+              processing_time_ms: 0,
+            });
+          }
+        },
+        onComplete: (data) => {
+          setIsLoading(false);
+          if (accumulatedOffers.length > 0) {
+            confetti({
+              particleCount: 75,
+              spread: 65,
+              origin: { y: 0.65 },
+              colors: ["#10b981", "#09090b", "#00ff66", "#f59e0b"],
+            });
+            const best = accumulatedOffers[0];
+            showSuccessToast(
+              "Price Slashed! 🎯",
+              `Bagged ${formatINR(best.price)} on ${best.store_name} (Saved ${formatINR(best.savings_vs_mrp)})`
+            );
+          } else if (!hasReceivedLiveEvents) {
+            showErrorToast(
+              "No verified matches found",
+              "We only show exact verified deals and never guess or display unrelated items."
+            );
+          }
+        },
+        onError: async () => {
+          if (!hasReceivedLiveEvents) {
+            try {
+              const data = await compareProduct(query);
+              setResult(data);
+              setIsLoading(false);
+              if (data.not_found || !data.offers || data.offers.length === 0) {
+                showErrorToast(
+                  "No verified matches found",
+                  data.message || "We only show exact verified deals and never guess or display unrelated items."
+                );
+              } else if (data.best_offer) {
+                confetti({
+                  particleCount: 75,
+                  spread: 65,
+                  origin: { y: 0.65 },
+                  colors: ["#10b981", "#09090b", "#00ff66", "#f59e0b"],
+                });
+                showSuccessToast(
+                  "Price Slashed! 🎯",
+                  `Bagged ${formatINR(data.best_offer.price)} on ${data.best_offer.store_name} (Saved ${formatINR(data.best_offer.savings_vs_mrp)})`
+                );
+              }
+            } catch (fallbackErr: any) {
+              setIsLoading(false);
+              showErrorToast(
+                "Could not find deals",
+                fallbackErr.message || "Please check your search term or try another product."
+              );
+            }
+          }
+        }
+      });
+    } catch {
+      try {
+        const data = await compareProduct(query);
+        setResult(data);
+      } catch (err: any) {
+        showErrorToast("Could not find deals", err.message || "Please check your search term.");
+      } finally {
+        setIsLoading(false);
       }
-
-      if (data.not_found || !data.offers || data.offers.length === 0) {
-        showErrorToast(
-          "No verified matches found",
-          data.message || "We only show exact verified deals and never guess or display unrelated items."
-        );
-      } else if (data.best_offer) {
-        // Trigger celebratory confetti
-        confetti({
-          particleCount: 75,
-          spread: 65,
-          origin: { y: 0.65 },
-          colors: ["#10b981", "#09090b", "#00ff66", "#f59e0b"],
-        });
-
-        showSuccessToast(
-          "Price Slashed! 🎯",
-          `Bagged ${formatINR(data.best_offer.price)} on ${data.best_offer.store_name} (Saved ${formatINR(data.best_offer.savings_vs_mrp)})`
-        );
-      }
-    } catch (err: any) {
-      showErrorToast(
-        "Could not find deals",
-        err.message || "Please check your search term or try another product."
-      );
-    } finally {
-      setIsLoading(false);
     }
   };
 

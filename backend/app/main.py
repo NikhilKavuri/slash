@@ -12,7 +12,7 @@ from app.core.database import init_db, SessionLocal
 from app.models.product import ProductModel, PricePointModel
 from app.core.redis_client import cache
 from app.services.ai_extractor import normalize_product_with_gemini, NormalizedProduct
-from app.services.store_search import fetch_store_offers, StoreOffer, KNOWN_CATALOG_BASELINES
+from app.services.store_search import fetch_store_offers, StoreOffer
 from app.services.review_summarizer import generate_review_summary, ReviewLensSummary
 
 app = FastAPI(
@@ -100,6 +100,14 @@ def persist_product_offers(clean_input: str, product_data: dict, offers_data: li
         slug = re.sub(r'[^a-zA-Z0-9]+', '-', slug_raw.lower()).strip('-')[:100]
 
         now = datetime.datetime.utcnow()
+        # Extract best genuine image URL
+        best_img = product_data.get("thumbnail_url")
+        if not best_img and offers_data:
+            for off in offers_data:
+                if off.get("image_url") and "http" in str(off.get("image_url")):
+                    best_img = off.get("image_url")
+                    break
+
         db_product = db.query(ProductModel).filter(ProductModel.slug == slug).first()
         if not db_product:
             db_product = ProductModel(
@@ -108,7 +116,7 @@ def persist_product_offers(clean_input: str, product_data: dict, offers_data: li
                 title=title,
                 category=product_data.get("category", "Beauty"),
                 search_query=clean_input,
-                thumbnail_url=offers_data[0].get("store_url") if offers_data else None,
+                thumbnail_url=best_img,
                 created_at=now,
                 last_checked_at=now
             )
@@ -117,6 +125,8 @@ def persist_product_offers(clean_input: str, product_data: dict, offers_data: li
             db.refresh(db_product)
         else:
             db_product.last_checked_at = now
+            if best_img and (not db_product.thumbnail_url or not db_product.thumbnail_url.startswith("http")):
+                db_product.thumbnail_url = best_img
             db.commit()
 
         for off in offers_data:
@@ -250,12 +260,8 @@ async def get_trending_products():
                     best_price = 799
                     best_store = p.brand
 
-                text_match = f"{p.brand} {p.title}".lower()
-                mrp = int(best_price * 1.25)
-                for k, v in KNOWN_CATALOG_BASELINES.items():
-                    if k in text_match:
-                        mrp = int(v["mrp"])
-                        break
+                # Use a reasonable MRP estimate from price data
+                mrp = int(best_price * 1.3)
                 if mrp <= best_price:
                     mrp = int(best_price + 200)
 
@@ -263,13 +269,14 @@ async def get_trending_products():
                 disc_pct = int(round((savings / mrp) * 100))
 
                 tag = "VIRAL AESTHETIC 🎀"
-                if any(w in text_match for w in ["watch", "smart", "electronic", "trimmer", "mustang"]):
+                text_lower = f"{p.brand} {p.title} {p.category}".lower()
+                if any(w in text_lower for w in ["watch", "smart", "electronic", "trimmer", "mustang"]):
                     tag = "TECH GRAIL ⚡"
-                elif any(w in text_match for w in ["whey", "protein", "fitness"]):
+                elif any(w in text_lower for w in ["whey", "protein", "fitness"]):
                     tag = "GYM RAT GRAIL 🏋️"
-                elif any(w in text_match for w in ["cleanser", "serum", "niacinamide"]):
+                elif any(w in text_lower for w in ["cleanser", "serum", "niacinamide"]):
                     tag = "CULT CLASSIC 🧪"
-                elif any(w in text_match for w in ["mascara", "lash", "makeup"]):
+                elif any(w in text_lower for w in ["mascara", "lash", "makeup"]):
                     tag = "BADDIE VIBES 💅"
 
                 items.append({

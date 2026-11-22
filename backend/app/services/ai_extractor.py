@@ -221,6 +221,8 @@ async def normalize_product_with_gemini(raw_text_or_url: str) -> NormalizedProdu
         raw_info = f"URL: {raw_text_or_url}\nResolved Final URL: {final_url}\nStore: {store}\nExtracted Title: {meta.get('title')}\nDescription: {meta.get('description')}"
         if asin:
             raw_info += f"\nProduct ASIN: {asin}\nCRITICAL INSTRUCTION: The user provided an Amazon India link or shortlink. Use Google Search to look up: `Amazon India {asin}` or `site:amazon.in {asin}` to identify the real Brand, Product Name, and Variant. Do NOT return '{asin}' or 'Amazon.in' as the product title."
+        elif not meta.get('title') or len(meta.get('title')) < 4:
+            raw_info += f"\nCRITICAL INSTRUCTION: The page title could not be read directly from the URL (likely a mobile app shortened link or ID from Blinkit, Flipkart, Myntra, etc.). Use Google Search to search for this URL or product path: `{final_url}` to identify the real Brand, Product Name, and Variant."
         thumbnail = meta.get("image")
     else:
         # Check if raw text is directly an ASIN
@@ -268,7 +270,8 @@ Return ONLY a valid JSON object matching this schema:
   "variant": "...",
   "category": "...",
   "normalized_title": "...",
-  "search_query": "..."
+  "search_query": "...",
+  "image_url": "https://..."
 }}
 If not found:
 {{
@@ -345,6 +348,8 @@ If not found:
                         not_found_reason=f"Sorry, we couldn't identify the product for Amazon ASIN {asin}. Please try pasting the product title directly."
                     )
 
+            img_url = data.get("image_url") if (data.get("image_url") and "http" in str(data.get("image_url"))) else thumbnail
+
             return NormalizedProduct(
                 brand=brand,
                 product_name=product_name,
@@ -353,7 +358,7 @@ If not found:
                 normalized_title=data.get("normalized_title", f"{brand} {product_name}"),
                 search_query=data.get("search_query", f"{brand} {product_name}"),
                 source_store=store,
-                thumbnail_url=thumbnail,
+                thumbnail_url=img_url,
                 original_url=raw_text_or_url if is_url else None,
                 is_found=True
             )

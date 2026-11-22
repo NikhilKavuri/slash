@@ -47,7 +47,6 @@ export function ImageWithFallback({
       alt={alt}
       loading="lazy"
       referrerPolicy="no-referrer"
-      crossOrigin="anonymous"
       onLoad={() => setLoaded(true)}
       onError={() => setError(true)}
       className={`${className} ${

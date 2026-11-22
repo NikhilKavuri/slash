@@ -1,6 +1,7 @@
 import re
 import json
 import logging
+import asyncio
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
 import httpx
@@ -284,13 +285,12 @@ If not found:
     if settings.GEMINI_API_KEY:
         try:
             import google.generativeai as genai
-            from google.generativeai import protos
-            genai.configure(api_key=settings.GEMINI_API_KEY)
+            genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
 
             resp_text = ""
             try:
-                model = genai.GenerativeModel("gemini-3.8-flash", tools="google_search_retrieval")
-                response = await model.generate_content_async(prompt)
+                model = genai.GenerativeModel("gemini-2.5-flash", tools="google_search_retrieval")
+                response = await asyncio.to_thread(model.generate_content, prompt)
                 try:
                     resp_text = response.text
                 except Exception:
@@ -300,8 +300,9 @@ If not found:
                             resp_text = "".join(getattr(part, "text", "") for part in cand.content.parts)
             except Exception as tool_err:
                 logger.warning(f"Gemini tools=google_search_retrieval fallback ({tool_err}), calling standard model...")
-                model = genai.GenerativeModel("gemini-3.8-flash")
-                response = await model.generate_content_async(
+                model = genai.GenerativeModel("gemini-2.5-flash")
+                response = await asyncio.to_thread(
+                    model.generate_content,
                     prompt,
                     generation_config={"response_mime_type": "application/json"}
                 )

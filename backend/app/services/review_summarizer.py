@@ -1,5 +1,6 @@
 import json
 import logging
+import asyncio
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from app.services.ai_extractor import NormalizedProduct
@@ -178,9 +179,10 @@ Return JSON:
     if settings.GEMINI_API_KEY:
         try:
             import google.generativeai as genai
-            genai.configure(api_key=settings.GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-3.8-flash")
-            response = await model.generate_content_async(
+            genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            response = await asyncio.to_thread(
+                model.generate_content,
                 prompt,
                 generation_config={"response_mime_type": "application/json"}
             )

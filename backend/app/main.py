@@ -146,10 +146,11 @@ def persist_product_offers(clean_input: str, product_data: dict, offers_data: li
 @app.get("/api/v1/test-gemini")
 async def test_gemini():
     try:
+        import asyncio
         import google.generativeai as genai
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        m = genai.GenerativeModel("gemini-3.8-flash")
-        resp = await m.generate_content_async("Hello, return 'OK'")
+        genai.configure(api_key=settings.GEMINI_API_KEY, transport="rest")
+        m = genai.GenerativeModel("gemini-2.5-flash")
+        resp = await asyncio.to_thread(m.generate_content, "Hello, reply with 'PONG'")
         return {"status": "success", "response": resp.text}
     except Exception as e:
         import traceback

@@ -182,14 +182,35 @@ async def health_check():
 @app.get("/v1/test-scrape")
 @app.get("/api/v1/test-scrape")
 async def test_scrape(q: str = "Philips BT1232 Trimmer"):
-    from app.services.browser_scraper import search_single_store
-    amz = await search_single_store("Amazon", q)
-    fk = await search_single_store("Flipkart", q)
+    from app.services.browser_scraper import fetch_page_html, parse_amazon_search, parse_flipkart_search
+    from bs4 import BeautifulSoup
+    from urllib.parse import quote_plus
+    
+    clean_q = quote_plus(q)
+    amz_url = f"https://www.amazon.in/s?k={clean_q}"
+    fk_url = f"https://www.flipkart.com/search?q={clean_q}"
+    
+    amz_html = await fetch_page_html(amz_url)
+    fk_html = await fetch_page_html(fk_url)
+    
+    amz_soup = BeautifulSoup(amz_html or "", "html.parser")
+    fk_soup = BeautifulSoup(fk_html or "", "html.parser")
+    
     return {
-        "amazon_count": len(amz),
-        "amazon_sample": amz[:2],
-        "flipkart_count": len(fk),
-        "flipkart_sample": fk[:2],
+        "amazon": {
+            "html_len": len(amz_html or ""),
+            "title": amz_soup.title.string if amz_soup.title else None,
+            "has_captcha": "captcha" in (amz_html or "").lower(),
+            "cards_count": len(amz_soup.select('div[data-component-type="s-search-result"]')),
+            "parsed": parse_amazon_search(amz_html or "")[:2]
+        },
+        "flipkart": {
+            "html_len": len(fk_html or ""),
+            "title": fk_soup.title.string if fk_soup.title else None,
+            "has_blocking": any(b in (fk_html or "").lower() for b in ["access denied", "robot", "block"]),
+            "items_count": len(fk_soup.select('div._75nlfW, div[data-id], div._1AtVbE')),
+            "parsed": parse_flipkart_search(fk_html or "")[:2]
+        }
     }
 
 @app.post("/compare", response_model=CompareResponse)

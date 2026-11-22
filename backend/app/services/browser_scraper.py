@@ -272,14 +272,27 @@ def parse_flipkart_search(html: str) -> List[Dict[str, Any]]:
 
             # MRP
             mrp = round(price * 1.25, 2)
-            prices_all = re.findall(r'₹\s*([0-9,]+)', item.text)
-            if len(prices_all) > 1:
-                try:
-                    second_p = float(prices_all[1].replace(',', ''))
-                    if second_p > price:
-                        mrp = second_p
-                except ValueError:
-                    pass
+            mrp_el = item.select_one('div.yRaY8j, div._3I9_wc, [class*="yRaY8j"], [class*="_3I9_wc"], s, del, strike')
+            if mrp_el:
+                m_match = re.search(r'([0-9,]+)', mrp_el.text.replace('₹', ''))
+                if m_match:
+                    try:
+                        parsed_mrp = float(m_match.group(1).replace(',', ''))
+                        if parsed_mrp > price and parsed_mrp < price * 5:
+                            mrp = parsed_mrp
+                    except ValueError:
+                        pass
+            else:
+                prices_all = re.findall(r'₹\s*([0-9,]+)', item.text)
+                if len(prices_all) > 1:
+                    for raw_p in prices_all[1:]:
+                        try:
+                            cand = float(raw_p.replace(',', ''))
+                            if cand > price and cand < price * 5:
+                                mrp = cand
+                                break
+                        except ValueError:
+                            pass
 
             # Image
             img_el = item.select_one('img.DByuf4, img._53G40d, img._396cs4, img')

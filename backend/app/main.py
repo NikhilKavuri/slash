@@ -182,7 +182,7 @@ async def health_check():
 @app.get("/v1/test-scrape")
 @app.get("/api/v1/test-scrape")
 async def test_scrape(q: str = "Philips BT1232 Trimmer"):
-    from app.services.browser_scraper import fetch_page_html, parse_amazon_search, parse_flipkart_search, parse_croma_search
+    from app.services.browser_scraper import fetch_page_html, parse_amazon_search, parse_flipkart_search, parse_croma_search, render_page_with_browser
     from bs4 import BeautifulSoup
     from urllib.parse import quote_plus
     
@@ -190,47 +190,44 @@ async def test_scrape(q: str = "Philips BT1232 Trimmer"):
     amz_url = f"https://www.amazon.in/s?k={clean_q}"
     fk_url = f"https://www.flipkart.com/search?q={clean_q}"
     cr_url = f"https://www.croma.com/searchB?q={clean_q}%3Arelevance&text={clean_q}"
+    bing_amz_url = f"https://www.bing.com/search?q=site%3Aamazon.in+{clean_q}"
     
-    amz_html = await fetch_page_html(amz_url)
     fk_html = await fetch_page_html(fk_url)
     cr_html = await fetch_page_html(cr_url)
+    bing_html = await fetch_page_html(bing_amz_url)
     
-    amz_soup = BeautifulSoup(amz_html or "", "html.parser")
     fk_soup = BeautifulSoup(fk_html or "", "html.parser")
     cr_soup = BeautifulSoup(cr_html or "", "html.parser")
+    bing_soup = BeautifulSoup(bing_html or "", "html.parser")
     
-    # Inspect Flipkart card structure
-    fk_sample = []
-    items = fk_soup.select('div._75nlfW, div[data-id], div._1AtVbE')
-    for it in items[:3]:
-        fk_sample.append({
-            "classes": it.get("class"),
-            "data_id": it.get("data_id"),
-            "text_snippet": it.text[:120],
-            "links": [a.get("href") for a in it.select("a") if a.get("href")][:2],
-            "price_match": [p.text for p in it.select('[class*="Nx9bqj"], [class*="_30jeq3"], [class*="price"]')]
-        })
+    # Inspect Croma links and structure
+    croma_links = [a.get("href") for a in cr_soup.select("a") if a.get("href") and ("/p/" in a.get("href") or "product" in a.get("href").lower())][:5]
+    croma_classes = list(set([cls for el in cr_soup.find_all(True) for cls in (el.get("class") or []) if any(k in cls.lower() for k in ["product", "item", "card", "plp"])]))[:10]
+    
+    # Inspect Bing search results for Amazon
+    bing_links = []
+    for a in bing_soup.select("li.b_algo h2 a, a[href*='amazon.in']"):
+        href = a.get("href", "")
+        if "amazon.in" in href and ("/dp/" in href or "/gp/" in href):
+            bing_links.append({"title": a.text.strip(), "url": href})
 
     return {
-        "amazon": {
-            "html_len": len(amz_html or ""),
-            "title": amz_soup.title.string if amz_soup.title else None,
-            "has_captcha": "captcha" in (amz_html or "").lower(),
-            "cards_count": len(amz_soup.select('div[data-component-type="s-search-result"]')),
-            "parsed": parse_amazon_search(amz_html or "")[:2]
-        },
         "flipkart": {
             "html_len": len(fk_html or ""),
             "title": fk_soup.title.string if fk_soup.title else None,
-            "items_count": len(items),
-            "sample_cards": fk_sample,
             "parsed": parse_flipkart_search(fk_html or "")[:2]
         },
         "croma": {
             "html_len": len(cr_html or ""),
             "title": cr_soup.title.string if cr_soup.title else None,
-            "items_count": len(cr_soup.select('li.product-item, div.cp-product')),
+            "detected_links": croma_links,
+            "detected_classes": croma_classes,
             "parsed": parse_croma_search(cr_html or "")[:2]
+        },
+        "bing_amazon": {
+            "html_len": len(bing_html or ""),
+            "title": bing_soup.title.string if bing_soup.title else None,
+            "found_amazon_products": bing_links[:5]
         }
     }
 

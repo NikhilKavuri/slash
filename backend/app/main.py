@@ -186,13 +186,20 @@ async def compare_product(req: CompareRequest, background_tasks: BackgroundTasks
     if not clean_input:
         raise HTTPException(status_code=400, detail="Please provide a valid product URL or search term.")
 
-    # 1. Check Redis Cache
-    cache_key = f"compare:{hashlib.md5(clean_input.lower().encode()).hexdigest()}"
+    # 1. Check Redis Cache (v3 schema with link validation)
+    cache_key = f"compare:v3:{hashlib.md5(clean_input.lower().encode()).hexdigest()}"
     cached_result = await cache.get(cache_key)
     if cached_result:
-        cached_result["cached"] = True
-        cached_result["processing_time_ms"] = round((time.time() - start_time) * 1000, 1)
-        return cached_result
+        # Sanity check cached offers: discard if stale dead URLs exist
+        cached_offers = cached_result.get("offers", [])
+        has_dead_urls = any(
+            any(bad in str(o.get("store_url", "")) for bad in ["B0DGH7481Z", "309325", "rukmini2."])
+            for o in cached_offers
+        )
+        if not has_dead_urls:
+            cached_result["cached"] = True
+            cached_result["processing_time_ms"] = round((time.time() - start_time) * 1000, 1)
+            return cached_result
 
     # 2. AI Product Normalization
     product = await normalize_product_with_gemini(clean_input)

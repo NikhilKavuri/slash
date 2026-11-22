@@ -182,7 +182,7 @@ async def health_check():
 @app.get("/v1/test-scrape")
 @app.get("/api/v1/test-scrape")
 async def test_scrape(q: str = "Philips BT1232 Trimmer"):
-    from app.services.browser_scraper import fetch_page_html, parse_amazon_search, parse_flipkart_search
+    from app.services.browser_scraper import fetch_page_html, parse_amazon_search, parse_flipkart_search, parse_croma_search
     from bs4 import BeautifulSoup
     from urllib.parse import quote_plus
     

@@ -146,11 +146,46 @@ async def fetch_page_html(url: str, wait_selector: Optional[str] = None) -> str:
         return resp.text
 
 
+def clean_product_title(raw_title: str) -> Optional[str]:
+    """Clean title and reject homepage slogans or bot interstitial titles."""
+    if not raw_title:
+        return None
+    t = raw_title.strip()
+    bad_phrases = [
+        "online shopping india", "buy mobiles, electronics", "online shopping site",
+        "robot check", "page not found", "something went wrong", "access denied",
+        "security check", "captcha", "croma electronics", "best online shopping store"
+    ]
+    if any(bp in t.lower() for bp in bad_phrases):
+        return None
+    t = re.sub(r'\s*(?:[-–—:|]\s*(?:Buy Online.*|Online at Best Price.*|Flipkart\.com|Amazon\.in|Croma.*|Nykaa.*|Myntra.*)|\.com.*)', '', t, flags=re.I).strip()
+    return t if len(t) > 3 else None
+
+
+def extract_slug_from_url(url: str) -> Optional[str]:
+    """Fallback: extract clean product title from URL path slug."""
+    try:
+        path = urlparse(url).path
+        slug_m = re.search(r'/(?:[^/]+/)?([a-zA-Z0-9\-]{4,})/(?:p|dp|prid)/[a-zA-Z0-9_\-]+', path, re.I)
+        if not slug_m:
+            slug_m = re.search(r'/([a-zA-Z0-9\-]{5,})/(?:p|dp)/', path, re.I)
+        if slug_m:
+            raw_slug = slug_m.group(1).replace('-', ' ').strip()
+            raw_slug = re.sub(r'\b(p|dp|product|prid|pid|itmc[a-z0-9]+)\b', '', raw_slug, flags=re.I).strip()
+            if len(raw_slug) > 3 and not any(k in raw_slug.lower() for k in ["search", "category", "store"]):
+                return raw_slug.title()
+    except Exception:
+        pass
+    return None
+
+
 async def scrape_pdp_with_browser(url: str) -> Dict[str, Any]:
     """
-    Open any user-provided product page link with real Playwright Chromium.
-    Extracts authentic title, brand, price, MRP, images, category, and offers.
+    Open any user-provided product page link (Flipkart, Amazon, Myntra, Nykaa, etc.)
+    Extracts authentic title, brand, price, MRP, images, category, and offers using Schema JSON-LD,
+    DOM selectors, and URL slug fallback with anti-bot protection.
     """
+    import json
     data = {
         "title": "",
         "brand": "",
@@ -164,83 +199,138 @@ async def scrape_pdp_with_browser(url: str) -> Dict[str, Any]:
         "is_found": False
     }
 
+    # 1. Detect Store
+    domain = urlparse(url).netloc.lower()
+    if "flipkart" in domain:
+        data["store"] = "Flipkart"
+    elif "amazon" in domain:
+        data["store"] = "Amazon"
+    elif "croma" in domain:
+        data["store"] = "Croma"
+    elif "nykaa" in domain:
+        data["store"] = "Nykaa"
+    elif "myntra" in domain:
+        data["store"] = "Myntra"
+    elif "ajio" in domain:
+        data["store"] = "Ajio"
+    elif "newme" in domain:
+        data["store"] = "NEWME"
+    elif "reliancedigital" in domain:
+        data["store"] = "Reliance Digital"
+    elif "tatacliq" in domain:
+        data["store"] = "Tata CLiQ"
+
+    html = ""
+    final_url = url
+
+    # 2. Try HTTPX first with browser headers (Flipkart, Myntra, Nykaa SSR return complete HTML in 300ms)
     try:
-        browser = await PlaywrightScraper.get_browser()
-        if browser:
-            context = await browser.new_context(
-                user_agent=BROWSER_HEADERS["User-Agent"],
-                viewport={"width": 1280, "height": 800},
-                locale="en-IN",
-                timezone_id="Asia/Kolkata"
-            )
-            page = await context.new_page()
-            try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=16000)
-                await asyncio.sleep(1.0)
-                final_url = page.url
-                html = await page.content()
-                data["final_url"] = final_url
-            finally:
-                await page.close()
-                await context.close()
-        else:
-            async with httpx.AsyncClient(timeout=12.0, follow_redirects=True, headers=BROWSER_HEADERS) as client:
-                resp = await client.get(url)
-                final_url = str(resp.url)
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=BROWSER_HEADERS) as client:
+            resp = await client.get(url)
+            final_url = str(resp.url)
+            # Only accept if not redirected to store homepage
+            if urlparse(final_url).path.strip('/') not in ["", "index.html", "home"]:
                 html = resp.text
-                data["final_url"] = final_url
+    except Exception as e:
+        logger.warning(f"HTTPX PDP fetch error for {url}: {e}")
 
-        soup = BeautifulSoup(html, "html.parser")
+    # 3. If HTTPX failed or empty, try Playwright with stealth
+    if not html or len(html) < 2000:
+        try:
+            browser = await PlaywrightScraper.get_browser()
+            if browser:
+                context = await browser.new_context(
+                    user_agent=BROWSER_HEADERS["User-Agent"],
+                    viewport={"width": 1280, "height": 800},
+                    locale="en-IN",
+                    timezone_id="Asia/Kolkata"
+                )
+                page = await context.new_page()
+                try:
+                    from playwright_stealth import stealth_async
+                    await stealth_async(page)
+                except Exception:
+                    pass
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                    await asyncio.sleep(1.0)
+                    p_url = page.url
+                    if urlparse(p_url).path.strip('/') not in ["", "index.html", "home"]:
+                        final_url = p_url
+                        html = await page.content()
+                finally:
+                    await page.close()
+                    await context.close()
+        except Exception as e:
+            logger.warning(f"Playwright PDP fetch error for {url}: {e}")
 
-        # 1. Store Detection
-        domain = urlparse(data["final_url"]).netloc.lower()
-        if "flipkart" in domain:
-            data["store"] = "Flipkart"
-        elif "amazon" in domain:
-            data["store"] = "Amazon"
-        elif "croma" in domain:
-            data["store"] = "Croma"
-        elif "nykaa" in domain:
-            data["store"] = "Nykaa"
-        elif "myntra" in domain:
-            data["store"] = "Myntra"
-        elif "ajio" in domain:
-            data["store"] = "Ajio"
-        elif "newme" in domain:
-            data["store"] = "NEWME"
-        elif "reliancedigital" in domain:
-            data["store"] = "Reliance Digital"
-        elif "tatacliq" in domain:
-            data["store"] = "Tata CLiQ"
+    data["final_url"] = final_url
+    soup = BeautifulSoup(html or "", "html.parser")
 
-        # 2. Title Extraction
-        title = None
-        title_el = (
-            soup.select_one("h1.B_NuCI, h1.C_NuCI, span.B_NuCI") or
-            soup.select_one("#productTitle, #title") or
-            soup.select_one("h1.pdp-title, h1.pdp-name") or
-            soup.select_one("h1.css-1gc4x7i, [class*='product-title']") or
-            soup.select_one("h1")
-        )
-        if title_el:
-            title = title_el.text.strip()
-        if not title:
-            og_title = soup.find("meta", property="og:title")
-            if og_title and og_title.get("content"):
-                title = og_title["content"].strip()
-        if not title and soup.title and soup.title.string:
-            title = soup.title.string.strip()
+    # 4. Parse Schema.org JSON-LD microdata (highest accuracy for Flipkart, Nykaa, etc.)
+    for s in soup.find_all("script", type="application/ld+json"):
+        if not s.string:
+            continue
+        try:
+            raw = json.loads(s.string.strip())
+            items = raw if isinstance(raw, list) else [raw]
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                # Title
+                if "name" in it and not data["title"]:
+                    cand_t = clean_product_title(str(it["name"]))
+                    if cand_t:
+                        data["title"] = cand_t
+                # Brand
+                b_val = it.get("brand")
+                if isinstance(b_val, dict) and b_val.get("name") and not data["brand"]:
+                    data["brand"] = str(b_val["name"]).strip().capitalize()
+                elif isinstance(b_val, str) and not data["brand"]:
+                    data["brand"] = b_val.strip().capitalize()
+                # Price
+                offers_val = it.get("offers")
+                if isinstance(offers_val, list) and offers_val:
+                    offers_val = offers_val[0]
+                if isinstance(offers_val, dict) and not data["price"]:
+                    p_cand = offers_val.get("price") or offers_val.get("lowPrice")
+                    if p_cand:
+                        try:
+                            data["price"] = float(str(p_cand).replace(",", ""))
+                        except ValueError:
+                            pass
+                # Image
+                img_val = it.get("image")
+                if isinstance(img_val, list) and img_val and not data["image_url"]:
+                    data["image_url"] = str(img_val[0])
+                elif isinstance(img_val, str) and not data["image_url"]:
+                    data["image_url"] = img_val
+        except Exception:
+            pass
 
-        # Clean title of site noise
-        if title:
-            title = re.sub(r'\s*(?:[-–—:]\s*(?:Buy Online.*|Flipkart\.com|Amazon\.in|Croma.*|Nykaa.*|Myntra.*)|\.com.*)', '', title, flags=re.I).strip()
-            data["title"] = title
-            data["is_found"] = True
+    # 5. DOM Title Extraction (h1, og:title)
+    if not data["title"]:
+        h1 = soup.select_one("h1.B_NuCI, h1.C_NuCI, span.B_NuCI, h1.pdp-title, h1.pdp-name, h1")
+        if h1:
+            data["title"] = clean_product_title(h1.text) or ""
+    if not data["title"]:
+        og_t = soup.find("meta", property="og:title")
+        if og_t and og_t.get("content"):
+            data["title"] = clean_product_title(og_t["content"]) or ""
 
-        # 3. Price Extraction
-        price = None
+    # 6. Fallback: extract title from URL path slug
+    if not data["title"]:
+        slug_title = extract_slug_from_url(url) or extract_slug_from_url(final_url)
+        if slug_title:
+            data["title"] = slug_title
+
+    if data["title"]:
+        data["is_found"] = True
+
+    # 7. DOM Price Extraction
+    if not data["price"]:
         price_el = (
-            soup.select_one("div.Nx9bqj, div._30jeq3") or
+            soup.select_one("div.Nx9bqj, div._30jeq3, [class*='Nx9bqj']") or
             soup.select_one("span.a-price-whole, span.apexPriceToPay") or
             soup.select_one("span.pdp-price strong") or
             soup.select_one("span.css-1jczs19, [class*='post-discount']") or
@@ -252,43 +342,38 @@ async def scrape_pdp_with_browser(url: str) -> Dict[str, Any]:
             p_m = re.search(r'([0-9,]+(?:\.\d+)?)', p_text.replace('₹', ''))
             if p_m:
                 try:
-                    price = float(p_m.group(1).replace(',', ''))
+                    data["price"] = float(p_m.group(1).replace(',', ''))
                 except ValueError:
                     pass
 
-        if not price:
-            # Fallback regex for prices in text
-            prices = re.findall(r'₹\s*([0-9,]+)', html[:15000])
-            if prices:
-                try:
-                    price = float(prices[0].replace(',', ''))
-                except ValueError:
-                    pass
+    if not data["price"] and html:
+        prices = re.findall(r'₹\s*([0-9,]+)', html[:25000])
+        if prices:
+            try:
+                data["price"] = float(prices[0].replace(',', ''))
+            except ValueError:
+                pass
 
-        data["price"] = price
+    # 8. DOM MRP Extraction
+    mrp_el = (
+        soup.select_one("div.yRaY8j, div._3I9_wc, s, del, strike") or
+        soup.select_one("span.a-text-price span[aria-hidden='true']") or
+        soup.select_one("span.pdp-mrp")
+    )
+    if mrp_el:
+        m_m = re.search(r'([0-9,]+(?:\.\d+)?)', mrp_el.text.replace('₹', ''))
+        if m_m:
+            try:
+                c_mrp = float(m_m.group(1).replace(',', ''))
+                if data["price"] and c_mrp > data["price"]:
+                    data["mrp"] = c_mrp
+            except ValueError:
+                pass
+    if not data["mrp"] and data["price"]:
+        data["mrp"] = round(data["price"] * 1.25, 2)
 
-        # 4. MRP Extraction
-        mrp = None
-        mrp_el = (
-            soup.select_one("div.yRaY8j, div._3I9_wc, s, del, strike") or
-            soup.select_one("span.a-text-price span[aria-hidden='true']") or
-            soup.select_one("span.pdp-mrp")
-        )
-        if mrp_el:
-            m_m = re.search(r'([0-9,]+(?:\.\d+)?)', mrp_el.text.replace('₹', ''))
-            if m_m:
-                try:
-                    parsed_mrp = float(m_m.group(1).replace(',', ''))
-                    if price and parsed_mrp > price:
-                        mrp = parsed_mrp
-                except ValueError:
-                    pass
-        if not mrp and price:
-            mrp = round(price * 1.25, 2)
-        data["mrp"] = mrp
-
-        # 5. Image Extraction
-        img_url = None
+    # 9. DOM Image Extraction
+    if not data["image_url"]:
         img_el = (
             soup.select_one("img.DByuf4, img._396cs4, img[src*='flixcart']") or
             soup.select_one("#landingImage, img[data-a-image-name='landingImage']") or
@@ -297,42 +382,43 @@ async def scrape_pdp_with_browser(url: str) -> Dict[str, Any]:
             soup.select_one("img[class*='product-image']")
         )
         if img_el:
-            img_url = img_el.get("src") or img_el.get("data-src")
-        if not img_url:
-            og_img = soup.find("meta", property="og:image")
-            if og_img and og_img.get("content"):
-                img_url = og_img["content"].strip()
+            data["image_url"] = img_el.get("src") or img_el.get("data-src")
+    if not data["image_url"]:
+        og_img = soup.find("meta", property="og:image")
+        if og_img and og_img.get("content"):
+            data["image_url"] = og_img["content"].strip()
 
-        if img_url:
-            if img_url.startswith("//"):
-                img_url = f"https:{img_url}"
-            if "rukmini2." in img_url:
-                img_url = img_url.replace("rukmini2.", "rukminim2.")
-            data["image_url"] = img_url
+    # Sanitize image
+    if data["image_url"]:
+        if data["image_url"].startswith("//"):
+            data["image_url"] = f"https:{data['image_url']}"
+        if "rukmini2." in data["image_url"]:
+            data["image_url"] = data["image_url"].replace("rukmini2.", "rukminim2.")
+        elif "rukmini1." in data["image_url"]:
+            data["image_url"] = data["image_url"].replace("rukmini1.", "rukminim1.")
 
-        # 6. Brand & Category Detection
-        title_lower = (data["title"] or "").lower()
-        if any(b in title_lower for b in ["apple", "iphone"]):
-            data["brand"] = "Apple"
-            data["category"] = "Electronics & Gadgets"
-        elif any(b in title_lower for b in ["philips", "havells"]):
-            data["brand"] = "Philips" if "philips" in title_lower else "Havells"
-            data["category"] = "Grooming"
-        elif any(b in title_lower for b in ["boult", "boat", "noise", "sony"]):
-            data["brand"] = title.split()[0] if title else "Boult"
-            data["category"] = "Electronics & Gadgets"
-        elif any(b in title_lower for b in ["minimalist", "the ordinary", "cetaphil"]):
-            data["brand"] = "Minimalist" if "minimalist" in title_lower else ("Cetaphil" if "cetaphil" in title_lower else "The Ordinary")
-            data["category"] = "Beauty & Personal Care"
-        elif any(b in title_lower for b in ["newme", "dress", "top", "shirt"]):
-            data["brand"] = "NEWME" if "newme" in domain else (title.split()[0] if title else "Fashion")
-            data["category"] = "Fashion & Apparel"
-        else:
-            words = (data["title"] or "").split()
-            data["brand"] = words[0] if words else "Brand"
+    # 10. Brand & Category Resolution
+    title_check = f"{data['brand']} {data['title']} {url}".lower()
+    if any(k in title_check for k in ["iphone", "apple"]):
+        data["brand"] = "Apple"
+        data["category"] = "Electronics & Gadgets"
+    elif any(k in title_check for k in ["philips", "trimmer"]):
+        data["brand"] = "Philips" if "philips" in title_check else "Generic"
+        data["category"] = "Grooming"
+    elif any(k in title_check for k in ["samsung", "oneplus", "watch", "laptop", "macbook", "audio", "earbuds", "headphone"]):
+        data["brand"] = data["brand"] or (data["title"].split()[0] if data["title"] else "Brand")
+        data["category"] = "Electronics & Gadgets"
+    elif any(k in title_check for k in ["minimalist", "cetaphil", "ordinary", "serum", "lotion"]):
+        data["brand"] = data["brand"] or ("Minimalist" if "minimalist" in title_check else ("Cetaphil" if "cetaphil" in title_check else "The Ordinary"))
+        data["category"] = "Beauty & Personal Care"
+    elif any(k in title_check for k in ["newme", "top", "dress", "kurta", "shirt"]):
+        data["brand"] = "NEWME" if "newme" in domain else (data["title"].split()[0] if data["title"] else "Fashion")
+        data["category"] = "Fashion & Apparel"
+    elif not data["brand"]:
+        words = data["title"].split()
+        data["brand"] = words[0].capitalize() if words else "Generic"
 
-    except Exception as e:
-        logger.error(f"Error scraping PDP {url}: {e}")
+    return data
 
     return data
 

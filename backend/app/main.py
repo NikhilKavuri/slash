@@ -183,89 +183,32 @@ async def health_check():
 @app.get("/v1/test-scrape")
 @app.get("/api/v1/test-scrape")
 async def test_scrape(q: str = "Philips BT1232 Trimmer"):
-    from app.services.browser_scraper import fetch_page_html, parse_flipkart_search, PlaywrightScraper
+    from app.services.browser_scraper import fetch_page_html, parse_flipkart_search, scrape_pdp_with_browser
     from bs4 import BeautifulSoup
     from urllib.parse import quote_plus
     
-    clean_q = quote_plus(q)
+    clean_q = q.strip()
+    
+    # If a URL is passed, test PDP extraction directly
+    if clean_q.startswith("http"):
+        pdp_result = await scrape_pdp_with_browser(clean_q)
+        return {
+            "mode": "pdp_url_scrape",
+            "url": clean_q,
+            "result": pdp_result
+        }
+    
+    clean_url_q = quote_plus(clean_q)
     
     # 1. Test Flipkart
-    fk_url = f"https://www.flipkart.com/search?q={clean_q}"
+    fk_url = f"https://www.flipkart.com/search?q={clean_url_q}"
     fk_html = await fetch_page_html(fk_url)
     fk_parsed = parse_flipkart_search(fk_html or "")
     
-    # 2. Test Google India Search for Amazon
-    google_url = f"https://www.google.com/search?q=site%3Aamazon.in+{clean_q}&gl=in&hl=en"
-    google_html = await fetch_page_html(google_url)
-    google_soup = BeautifulSoup(google_html or "", "html.parser")
-    google_links = []
-    for a in google_soup.select("a[href*='amazon.in']"):
-        href = a.get("href", "")
-        if "/dp/" in href or "/gp/" in href:
-            google_links.append({"title": a.text.strip(), "href": href})
-    
-    # 3. Test Amazon Mobile with Playwright
-    amz_mobile_cards = []
-    try:
-        browser = await PlaywrightScraper.get_browser()
-        if browser:
-            m_ctx = await browser.new_context(
-                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
-                viewport={"width": 390, "height": 844},
-                locale="en-IN",
-                timezone_id="Asia/Kolkata"
-            )
-            m_page = await m_ctx.new_page()
-            await m_page.goto(f"https://www.amazon.in/s?k={clean_q}", wait_until="domcontentloaded", timeout=12000)
-            m_html = await m_page.content()
-            m_soup = BeautifulSoup(m_html, "html.parser")
-            for item in m_soup.select("[data-asin]"):
-                asin = item.get("data-asin")
-                if asin and len(asin) == 10:
-                    title_el = item.select_one("h2, span.a-size-small, [class*='title']")
-                    price_el = item.select_one("span.a-price-whole, [class*='price']")
-                    amz_mobile_cards.append({
-                        "asin": asin,
-                        "title": title_el.text.strip() if title_el else None,
-                        "price": price_el.text.strip() if price_el else None,
-                        "url": f"https://www.amazon.in/dp/{asin}"
-                    })
-            await m_page.close()
-            await m_ctx.close()
-    except Exception as e:
-        amz_mobile_cards.append({"error": str(e)})
-
-    # 4. Test Nykaa
-    nykaa_cards = []
-    try:
-        nykaa_url = f"https://www.nykaa.com/search/result/?q={clean_q}"
-        nyk_html = await fetch_page_html(nykaa_url)
-        nyk_soup = BeautifulSoup(nyk_html or "", "html.parser")
-        for a in nyk_soup.select("a[href*='/p/']")[:5]:
-            nykaa_cards.append({
-                "title": a.text.strip()[:100],
-                "href": "https://www.nykaa.com" + a.get("href") if a.get("href").startswith("/") else a.get("href")
-            })
-    except Exception as e:
-        nykaa_cards.append({"error": str(e)})
-
     return {
         "flipkart": {
             "count": len(fk_parsed),
-            "top": fk_parsed[:2]
-        },
-        "google_amazon": {
-            "html_len": len(google_html or ""),
-            "title": google_soup.title.string if google_soup.title else None,
-            "found": google_links[:3]
-        },
-        "amazon_mobile": {
-            "found_count": len(amz_mobile_cards),
-            "cards": amz_mobile_cards[:3]
-        },
-        "nykaa": {
-            "found_count": len(nykaa_cards),
-            "cards": nykaa_cards[:3]
+            "top": fk_parsed[:3]
         }
     }
 
@@ -278,17 +221,19 @@ async def compare_product(req: CompareRequest, background_tasks: BackgroundTasks
     if not clean_input:
         raise HTTPException(status_code=400, detail="Please provide a valid product URL or search term.")
 
-    # 1. Check Redis Cache (v3 schema with link validation)
-    cache_key = f"compare:v3:{hashlib.md5(clean_input.lower().encode()).hexdigest()}"
+    # 1. Check Redis Cache (v5 schema with strict validation)
+    cache_key = f"compare:v5:{hashlib.md5(clean_input.lower().encode()).hexdigest()}"
     cached_result = await cache.get(cache_key)
     if cached_result:
-        # Sanity check cached offers: discard if stale dead URLs exist
         cached_offers = cached_result.get("offers", [])
-        has_dead_urls = any(
-            any(bad in str(o.get("store_url", "")) for bad in ["B0DGH7481Z", "309325", "rukmini2."])
-            for o in cached_offers
+        is_bad = (
+            cached_result.get("not_found")
+            or not cached_offers
+            or any(bad in str(cached_result.get("product", {}).get("brand", "")).lower() for bad in ["online", "generic", "unknown"])
+            or any(bad in str(cached_result.get("product", {}).get("normalized_title", "")).lower() for bad in ["online shopping", "buy mobiles"])
+            or any(any(bad in str(o.get("store_url", "")) for bad in ["B0DGH7481Z", "309325", "rukmini2."]) for o in cached_offers)
         )
-        if not has_dead_urls:
+        if not is_bad:
             cached_result["cached"] = True
             cached_result["processing_time_ms"] = round((time.time() - start_time) * 1000, 1)
             return cached_result
@@ -368,8 +313,9 @@ async def compare_product(req: CompareRequest, background_tasks: BackgroundTasks
         "processing_time_ms": round((time.time() - start_time) * 1000, 1)
     }
 
-    # 6. Save to Redis Cache (12 hours TTL)
-    await cache.set(cache_key, result, ttl_seconds=3600 * 12)
+    # 6. Save to Redis Cache (only for valid matches with offers!)
+    if not result.get("not_found") and result.get("offers"):
+        await cache.set(cache_key, result, ttl_seconds=3600 * 12)
 
     # 7. Asynchronously persist to Supabase in background
     background_tasks.add_task(

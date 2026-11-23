@@ -228,8 +228,8 @@ async def scrape_pdp_with_browser(url: str) -> Dict[str, Any]:
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=BROWSER_HEADERS) as client:
             resp = await client.get(url)
             final_url = str(resp.url)
-            # Only accept if not redirected to store homepage
-            if urlparse(final_url).path.strip('/') not in ["", "index.html", "home"]:
+            # Only accept if status is 200 and not redirected to store homepage
+            if resp.status_code == 200 and urlparse(final_url).path.strip('/') not in ["", "index.html", "home"]:
                 html = resp.text
     except Exception as e:
         logger.warning(f"HTTPX PDP fetch error for {url}: {e}")
@@ -268,11 +268,17 @@ async def scrape_pdp_with_browser(url: str) -> Dict[str, Any]:
     soup = BeautifulSoup(html or "", "html.parser")
 
     # 4. Parse Schema.org JSON-LD microdata (highest accuracy for Flipkart, Nykaa, etc.)
+    schema_texts = []
     for s in soup.find_all("script", type="application/ld+json"):
-        if not s.string:
-            continue
+        txt = s.get_text().strip() if s else ""
+        if txt:
+            schema_texts.append(txt)
+    if not schema_texts and html:
+        schema_texts = [m.group(1).strip() for m in re.finditer(r'<script[^>]*type=[\'"]application/ld\+json[\'"][^>]*>(.*?)</script>', html, re.DOTALL)]
+
+    for st in schema_texts:
         try:
-            raw = json.loads(s.string.strip())
+            raw = json.loads(st)
             items = raw if isinstance(raw, list) else [raw]
             for it in items:
                 if not isinstance(it, dict):
@@ -302,15 +308,18 @@ async def scrape_pdp_with_browser(url: str) -> Dict[str, Any]:
                 # Image
                 img_val = it.get("image")
                 if isinstance(img_val, list) and img_val and not data["image_url"]:
-                    data["image_url"] = str(img_val[0])
+                    cand_img = str(img_val[0])
+                    if not any(bad in cand_img.lower() for bad in ["promos", "logo", "svg", "icon", "/www/"]):
+                        data["image_url"] = cand_img
                 elif isinstance(img_val, str) and not data["image_url"]:
-                    data["image_url"] = img_val
+                    if not any(bad in img_val.lower() for bad in ["promos", "logo", "svg", "icon", "/www/"]):
+                        data["image_url"] = img_val
         except Exception:
             pass
 
     # 5. DOM Title Extraction (h1, og:title)
     if not data["title"]:
-        h1 = soup.select_one("h1.B_NuCI, h1.C_NuCI, span.B_NuCI, h1.pdp-title, h1.pdp-name, h1")
+        h1 = soup.select_one("h1.B_NuCI, h1.C_NuCI, span.B_NuCI, h1.pdp-title, h1.pdp-name, h1._6EBuvT, h1.VU-ZEz, h1")
         if h1:
             data["title"] = clean_product_title(h1.text) or ""
     if not data["title"]:
@@ -372,13 +381,21 @@ async def scrape_pdp_with_browser(url: str) -> Dict[str, Any]:
     if not data["mrp"] and data["price"]:
         data["mrp"] = round(data["price"] * 1.25, 2)
 
-    # 9. DOM Image Extraction (filter out logos, icons, SVGs)
+    # 9. DOM Image Extraction (filter out logos, icons, SVGs, promo banners)
+    BAD_IMG_SUBSTRINGS = ["logo", "fk-logo", "svg", "icon", "batman", "placeholder", "pixel", "blank", "profile", "promos", "banner", "/www/", "badge", "payment", "advertisement"]
+
+    # First check for high-res product photos in HTML
+    if not data["image_url"] and html:
+        x_imgs = re.findall(r'(https?://rukmin[^\'"]*xif0q[^\'"]*\.(?:jpg|jpeg|png|webp)[^\'"]*)', html)
+        if x_imgs:
+            data["image_url"] = x_imgs[0]
+
     if not data["image_url"]:
         for candidate in soup.select("img"):
             src = candidate.get("src") or candidate.get("data-src") or ""
-            if not src or any(bad in src.lower() for bad in ["logo", "fk-logo", "svg", "icon", "batman", "placeholder", "pixel", "blank", "profile"]):
+            if not src or any(bad in src.lower() for bad in BAD_IMG_SUBSTRINGS):
                 continue
-            if any(good in src.lower() for good in ["xif0q", "rukmini", "media-amazon", "myntassets", "/product/", "/images/", "p/"]):
+            if any(good in src.lower() for good in ["xif0q", "media-amazon", "myntassets", "/product/", "/images/", "p/"]):
                 data["image_url"] = src
                 break
 
@@ -386,8 +403,12 @@ async def scrape_pdp_with_browser(url: str) -> Dict[str, Any]:
         og_img = soup.find("meta", property="og:image")
         if og_img and og_img.get("content"):
             c_og = og_img["content"].strip()
-            if not any(bad in c_og.lower() for bad in ["logo", "svg", "icon"]):
+            if not any(bad in c_og.lower() for bad in BAD_IMG_SUBSTRINGS):
                 data["image_url"] = c_og
+
+    # Double check existing image against bad substrings
+    if data["image_url"] and any(bad in data["image_url"].lower() for bad in BAD_IMG_SUBSTRINGS):
+        data["image_url"] = None
 
     # Default image for iPhone if missing
     if not data["image_url"] and "iphone" in data["title"].lower():
@@ -779,7 +800,7 @@ async def live_scrape_store_competitors(brand: str, product_title: str, category
     if exclude_store:
         stores_to_check = [s for s in stores_to_check if s.lower() != exclude_store.lower()]
 
-    search_query = f"{brand} {product_title}".strip()
+    search_query = product_title.strip() if brand.lower() in product_title.lower() else f"{brand} {product_title}".strip()
     logger.info(f"Starting live multi-store scraping for: '{search_query}' across {stores_to_check}")
 
     tasks = [

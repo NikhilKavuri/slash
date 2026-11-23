@@ -191,10 +191,29 @@ async def test_scrape(q: str = "Philips BT1232 Trimmer"):
     
     # If a URL is passed, test PDP extraction directly
     if clean_q.startswith("http"):
+        import httpx
+        from app.services.browser_scraper import BROWSER_HEADERS, scrape_pdp_with_browser
+        
+        diag = {}
+        try:
+            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=BROWSER_HEADERS) as client:
+                r = await client.get(clean_q)
+                diag = {
+                    "status": r.status_code,
+                    "url": str(r.url),
+                    "len": len(r.text),
+                    "has_schema": "application/ld+json" in r.text,
+                    "title": BeautifulSoup(r.text, "html.parser").title.string if BeautifulSoup(r.text, "html.parser").title else None,
+                    "h1": [h.text.strip() for h in BeautifulSoup(r.text, "html.parser").select("h1")]
+                }
+        except Exception as e:
+            diag = {"error": str(e)}
+
         pdp_result = await scrape_pdp_with_browser(clean_q)
         return {
             "mode": "pdp_url_scrape",
             "url": clean_q,
+            "http_diag": diag,
             "result": pdp_result
         }
     
